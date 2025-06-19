@@ -1,35 +1,57 @@
 import React from "react";
+import { Link } from "react-router-dom";
 
 function App() {
   return (
-    <div style={{
-      background: "#121212",
-      color: "#fff",
-      minHeight: "100vh",
-      fontFamily: "Poppins, sans-serif",
-      padding: "20px"
-    }}>
-      <h1>🔥 Welcome to Afribase</h1>
-      <p>Connect • Chat • Hustle • Sell</p>
+    <div style={containerStyle}>
+      <h1 style={headingStyle}>🔥 Welcome to Afribase</h1>
+      <p style={{ fontSize: "16px", color: "#ccc" }}>
+        Connect • Chat • Hustle • Sell
+      </p>
 
-      <div style={{ marginTop: "40px" }}>
-        <a href="/chat" style={btnStyle}>💬 Chat Room</a><br />
-        <a href="/market" style={btnStyle}>🛍️ Marketplace</a><br />
-        <a href="/profile" style={btnStyle}>👤 My Profile</a>
+      <div style={navContainer}>
+        <Link to="/chat" style={btnStyle}>💬 Chat Room</Link>
+        <Link to="/market" style={btnStyle}>🛍️ Marketplace</Link>
+        <Link to="/profile" style={btnStyle}>👤 My Profile</Link>
       </div>
     </div>
   );
 }
 
+const containerStyle = {
+  background: "#121212",
+  color: "#fff",
+  minHeight: "100vh",
+  fontFamily: "Poppins, sans-serif",
+  padding: "40px 20px",
+  textAlign: "center"
+};
+
+const headingStyle = {
+  fontSize: "32px",
+  color: "#00ffcc",
+  marginBottom: "10px"
+};
+
+const navContainer = {
+  marginTop: "40px",
+  display: "flex",
+  flexDirection: "column",
+  gap: "15px",
+  alignItems: "center"
+};
+
 const btnStyle = {
   backgroundColor: "#00ffcc",
   color: "#000",
-  padding: "12px 20px",
-  borderRadius: "8px",
+  padding: "12px 24px",
+  borderRadius: "10px",
   textDecoration: "none",
   fontSize: "18px",
-  margin: "10px 0",
-  display: "inline-block"
+  fontWeight: "600",
+  width: "220px",
+  textAlign: "center",
+  boxShadow: "0 0 10px #00ffcc90",
 };
 
 export default App;
