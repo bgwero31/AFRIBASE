@@ -4,64 +4,83 @@ import { Link } from "react-router-dom";
 export default function Home() {
   return (
     <div style={containerStyle}>
-      <h1 style={headingStyle}>🔥 Welcome to Afribase</h1>
-      <p style={{ fontSize: "16px", color: "#ccc" }}>
-        Connect • Chat • Hustle • Sell
-      </p>
+      <header style={headerStyle}>
+        <h1 style={titleStyle}>🌍 Afribase</h1>
+        <p style={subTitleStyle}>Your All-in-One African SuperApp</p>
+      </header>
 
-      <div style={navContainer}>
-        <Link to="/chat" style={btnStyle}>💬 Chat Room</Link>
-        <Link to="/market" style={btnStyle}>🛍️ Marketplace</Link>
-      </div>
+      <main style={mainStyle}>
+        <Link to="/chat" style={button3D}>💬 Chat Room</Link>
+        <Link to="/market" style={button3D}>🛍️ Marketplace</Link>
+        <Link to="/profile" style={button3D}>👤 My Profile</Link>
+      </main>
 
-      <div style={profileBox}>
-        <h3>👤 My Profile</h3>
-        <p>Name: B.JAY</p>
-        <p>Status: Visionary 🇿🇼</p>
-      </div>
+      <footer style={footerStyle}>
+        © Afribase – All rights reserved.
+      </footer>
     </div>
   );
 }
 
 const containerStyle = {
-  background: "#121212",
-  color: "#fff",
   minHeight: "100vh",
-  fontFamily: "Poppins, sans-serif",
-  padding: "40px 20px",
-  textAlign: "center"
-};
-
-const headingStyle = {
-  fontSize: "32px",
-  color: "#00ffcc",
-  marginBottom: "10px"
-};
-
-const navContainer = {
-  marginTop: "30px",
+  background: "linear-gradient(145deg, #1f1f1f, #0f0f0f)",
+  color: "#fff",
+  fontFamily: "'Poppins', sans-serif",
   display: "flex",
   flexDirection: "column",
-  gap: "15px",
-  alignItems: "center"
+  alignItems: "center",
+  padding: "20px"
 };
 
-const btnStyle = {
-  backgroundColor: "#00ffcc",
-  color: "#000",
-  padding: "12px 24px",
-  borderRadius: "10px",
-  textDecoration: "none",
+const headerStyle = {
+  textAlign: "center",
+  marginBottom: "40px"
+};
+
+const titleStyle = {
+  fontSize: "42px",
+  fontWeight: "900",
+  background: "linear-gradient(to right, #00ffcc, #00d9ff)",
+  WebkitBackgroundClip: "text",
+  WebkitTextFillColor: "transparent",
+  textShadow: "0 0 20px #00ffcc55"
+};
+
+const subTitleStyle = {
+  fontSize: "18px",
+  color: "#bbb"
+};
+
+const mainStyle = {
+  display: "flex",
+  flexDirection: "column",
+  gap: "20px",
+  alignItems: "center",
+  width: "100%"
+};
+
+const button3D = {
+  width: "260px",
+  textAlign: "center",
+  padding: "14px 24px",
   fontSize: "18px",
   fontWeight: "600",
-  width: "220px",
-  textAlign: "center",
-  boxShadow: "0 0 10px #00ffcc90",
+  borderRadius: "12px",
+  border: "none",
+  background: "linear-gradient(145deg, #00ffcc, #00c2a6)",
+  boxShadow: "0 8px 18px #00ffcc50",
+  color: "#000",
+  textDecoration: "none",
+  transition: "all 0.3s ease-in-out"
 };
 
-const profileBox = {
-  marginTop: "40px",
+const footerStyle = {
+  marginTop: "auto",
   padding: "20px",
-  backgroundColor: "#222",
-  borderRadius: "12px"
+  fontSize: "14px",
+  color: "#888",
+  borderTop: "1px solid #333",
+  width: "100%",
+  textAlign: "center"
 };
