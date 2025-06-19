@@ -5,7 +5,7 @@ export default function Home() {
   return (
     <div style={containerStyle}>
       <header style={headerStyle}>
-        <h1 style={titleStyle}>🌍 Afribase</h1>
+        <h1 style={afribaseStyle}>AFRIBASE</h1>
         <p style={subTitleStyle}>Your All-in-One African SuperApp</p>
       </header>
 
@@ -38,12 +38,14 @@ const headerStyle = {
   marginBottom: "40px"
 };
 
-const titleStyle = {
-  fontSize: "42px",
+// 🔥 Gradient "fire flames" text
+const afribaseStyle = {
+  fontSize: "60px",
   fontWeight: "900",
-  background: "linear-gradient(to right, #00ffcc, #00d9ff)",
+  background: "linear-gradient(to top, #00ffcc, #000000)",
   WebkitBackgroundClip: "text",
   WebkitTextFillColor: "transparent",
+  letterSpacing: "4px",
   textShadow: "0 0 20px #00ffcc55"
 };
 
