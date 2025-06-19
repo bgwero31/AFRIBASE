@@ -1,12 +1,32 @@
 import React from "react";
 
-const Home = () => {
+export default function Home() {
   return (
-    <div style={{ padding: "20px", textAlign: "center" }}>
-      <h1>🔥 Welcome to Afribase</h1>
-      <p>Connect • Chat • Hustle • Sell</p>
+    <div style={homeContainer}>
+      <h2 style={{ color: "#00ffcc" }}>👤 My Profile</h2>
+      <div style={profileBox}>
+        <p><strong>Name:</strong> B.JAY</p>
+        <p><strong>Status:</strong> Online</p>
+        <p><strong>Location:</strong> Zimbabwe</p>
+        <p><strong>Joined:</strong> June 2025</p>
+      </div>
     </div>
   );
+}
+
+const homeContainer = {
+  marginTop: "40px",
+  padding: "20px",
+  background: "#1e1e1e",
+  borderRadius: "12px",
+  boxShadow: "0 0 8px #00ffcc88",
+  maxWidth: "500px",
+  margin: "auto",
 };
 
-export default Home;
+const profileBox = {
+  textAlign: "left",
+  fontSize: "16px",
+  lineHeight: "1.6",
+  color: "#fff",
+};
