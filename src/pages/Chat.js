@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from "react";
+import { useNavigate } from "react-router-dom";
 import { db } from "../firebase";
 import { ref, push, onValue } from "firebase/database";
 
@@ -7,6 +8,7 @@ export default function Chat() {
   const [message, setMessage] = useState("");
   const [messages, setMessages] = useState([]);
   const messagesEndRef = useRef(null);
+  const navigate = useNavigate();
 
   useEffect(() => {
     const chatRef = ref(db, "messages");
@@ -23,11 +25,11 @@ export default function Chat() {
   }, [messages]);
 
   const sendMessage = () => {
-    if (name && message) {
+    if (name && message.trim()) {
       push(ref(db, "messages"), {
         name,
-        text: message,
-        time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+        text: message.trim(),
+        time: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
       });
       setMessage("");
     }
@@ -36,7 +38,8 @@ export default function Chat() {
   return (
     <div style={chatWrapper}>
       <div style={chatHeader}>
-        <h2>💬 Welcome to Chatroom</h2>
+        <button onClick={() => navigate("/")} style={backBtn}>← Back</button>
+        <h2 style={{ margin: 0 }}>💬 Afribase Chatroom</h2>
       </div>
 
       <div style={messagesContainer}>
@@ -48,10 +51,10 @@ export default function Chat() {
               style={{
                 ...msgStyle,
                 alignSelf: isOwn ? "flex-end" : "flex-start",
-                backgroundColor: isOwn ? "#dcf8c6" : "#333",
+                backgroundColor: isOwn ? "#00ffcc" : "#2c2c2c",
                 color: isOwn ? "#000" : "#fff",
-                borderTopRightRadius: isOwn ? 0 : "10px",
-                borderTopLeftRadius: isOwn ? "10px" : 0,
+                borderBottomLeftRadius: isOwn ? "12px" : "0px",
+                borderBottomRightRadius: isOwn ? "0px" : "12px",
               }}
             >
               <div style={{ fontWeight: "bold", marginBottom: "4px" }}>{msg.name}</div>
@@ -72,16 +75,16 @@ export default function Chat() {
             onChange={(e) => setName(e.target.value)}
           />
         ) : (
-          <>
+          <div style={{ display: "flex", gap: "10px" }}>
             <input
-              style={inputStyle}
+              style={{ ...inputStyle, flex: 1 }}
               placeholder="Type your message"
               value={message}
               onChange={(e) => setMessage(e.target.value)}
               onKeyDown={(e) => e.key === "Enter" && sendMessage()}
             />
             <button onClick={sendMessage} style={btnStyle}>Send</button>
-          </>
+          </div>
         )}
       </div>
     </div>
@@ -92,8 +95,10 @@ const chatWrapper = {
   display: "flex",
   flexDirection: "column",
   height: "100vh",
+  background: "url('https://www.transparenttextures.com/patterns/dark-mosaic.png')",
   backgroundColor: "#121212",
-  fontFamily: "Poppins, sans-serif"
+  color: "#fff",
+  fontFamily: "Poppins, sans-serif",
 };
 
 const chatHeader = {
@@ -102,7 +107,19 @@ const chatHeader = {
   color: "#000",
   fontWeight: "bold",
   fontSize: "18px",
-  textAlign: "center"
+  textAlign: "center",
+  position: "relative",
+};
+
+const backBtn = {
+  position: "absolute",
+  left: "15px",
+  top: "15px",
+  background: "none",
+  border: "none",
+  fontSize: "18px",
+  cursor: "pointer",
+  color: "#000"
 };
 
 const messagesContainer = {
@@ -111,46 +128,44 @@ const messagesContainer = {
   overflowY: "auto",
   display: "flex",
   flexDirection: "column",
-  gap: "12px"
+  gap: "12px",
 };
 
 const msgStyle = {
-  padding: "10px 14px",
+  padding: "12px 16px",
   borderRadius: "12px",
-  maxWidth: "75%",
-  boxShadow: "0 0 5px rgba(0,0,0,0.2)",
+  maxWidth: "70%",
+  boxShadow: "0 2px 5px rgba(0,0,0,0.2)",
   fontSize: "15px",
-  lineHeight: "1.4"
+  lineHeight: "1.5",
 };
 
 const timeStyle = {
   fontSize: "11px",
-  color: "#888",
+  color: "#aaa",
   textAlign: "right",
-  marginTop: "4px"
+  marginTop: "6px",
 };
 
 const inputWrapper = {
-  display: "flex",
-  flexDirection: "column",
-  padding: "10px",
-  borderTop: "1px solid #333"
+  padding: "12px",
+  borderTop: "1px solid #333",
+  backgroundColor: "#1b1b1b"
 };
 
 const inputStyle = {
   padding: "12px",
-  borderRadius: "6px",
+  borderRadius: "8px",
   border: "none",
   fontSize: "16px",
-  marginBottom: "8px"
 };
 
 const btnStyle = {
-  padding: "12px",
+  padding: "12px 16px",
   backgroundColor: "#00ffcc",
   color: "#000",
   border: "none",
-  borderRadius: "6px",
+  borderRadius: "8px",
   fontWeight: "bold",
-  cursor: "pointer"
+  cursor: "pointer",
 };
