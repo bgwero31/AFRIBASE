@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useRef } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { db } from "../firebase";
 import { ref, push, onValue } from "firebase/database";
 
@@ -6,116 +6,151 @@ export default function Chat() {
   const [name, setName] = useState("");
   const [message, setMessage] = useState("");
   const [messages, setMessages] = useState([]);
-  const chatEndRef = useRef(null);
-
-  // Auto scroll to bottom
-  const scrollToBottom = () => {
-    if (chatEndRef.current) {
-      chatEndRef.current.scrollIntoView({ behavior: "smooth" });
-    }
-  };
+  const messagesEndRef = useRef(null);
 
   useEffect(() => {
     const chatRef = ref(db, "messages");
     onValue(chatRef, (snapshot) => {
       const data = snapshot.val();
       if (data) {
-        const messageArray = Object.values(data).sort((a, b) => a.time - b.time);
-        setMessages(messageArray);
-        scrollToBottom();
+        setMessages(Object.values(data));
       }
     });
   }, []);
 
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [messages]);
+
   const sendMessage = () => {
-    if (name.trim() && message.trim()) {
+    if (name && message) {
       push(ref(db, "messages"), {
-        name: name.trim(),
-        text: message.trim(),
-        time: Date.now()
+        name,
+        text: message,
+        time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
       });
       setMessage("");
     }
   };
 
   return (
-    <div style={containerStyle}>
-      <h2>💬 Afribase Chat Room</h2>
+    <div style={chatWrapper}>
+      <div style={chatHeader}>
+        <h2>💬 Welcome to Chatroom</h2>
+      </div>
 
-      <input
-        placeholder="Enter your name"
-        value={name}
-        onChange={(e) => setName(e.target.value)}
-        style={inputStyle}
-      />
-      <input
-        placeholder="Type your message"
-        value={message}
-        onChange={(e) => setMessage(e.target.value)}
-        onKeyPress={(e) => e.key === "Enter" && sendMessage()}
-        style={inputStyle}
-      />
-      <button onClick={sendMessage} style={buttonStyle}>Send</button>
-
-      <div style={chatBoxStyle}>
-        {messages.map((msg, i) => (
-          <div key={i} style={msgStyle}>
-            <strong>{msg.name}</strong>: {msg.text}
-            <div style={timeStyle}>
-              {new Date(msg.time).toLocaleTimeString()}
+      <div style={messagesContainer}>
+        {messages.map((msg, i) => {
+          const isOwn = msg.name === name;
+          return (
+            <div
+              key={i}
+              style={{
+                ...msgStyle,
+                alignSelf: isOwn ? "flex-end" : "flex-start",
+                backgroundColor: isOwn ? "#dcf8c6" : "#333",
+                color: isOwn ? "#000" : "#fff",
+                borderTopRightRadius: isOwn ? 0 : "10px",
+                borderTopLeftRadius: isOwn ? "10px" : 0,
+              }}
+            >
+              <div style={{ fontWeight: "bold", marginBottom: "4px" }}>{msg.name}</div>
+              <div>{msg.text}</div>
+              <div style={timeStyle}>{msg.time}</div>
             </div>
-          </div>
-        ))}
-        <div ref={chatEndRef} />
+          );
+        })}
+        <div ref={messagesEndRef} />
+      </div>
+
+      <div style={inputWrapper}>
+        {!name ? (
+          <input
+            style={inputStyle}
+            placeholder="Enter your name"
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+          />
+        ) : (
+          <>
+            <input
+              style={inputStyle}
+              placeholder="Type your message"
+              value={message}
+              onChange={(e) => setMessage(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && sendMessage()}
+            />
+            <button onClick={sendMessage} style={btnStyle}>Send</button>
+          </>
+        )}
       </div>
     </div>
   );
 }
 
-const containerStyle = {
-  padding: "20px",
-  maxWidth: "600px",
-  margin: "auto"
+const chatWrapper = {
+  display: "flex",
+  flexDirection: "column",
+  height: "100vh",
+  backgroundColor: "#121212",
+  fontFamily: "Poppins, sans-serif"
 };
 
-const inputStyle = {
-  width: "100%",
-  padding: "10px",
-  margin: "10px 0",
-  fontSize: "16px",
-  borderRadius: "5px",
-  border: "1px solid #ccc"
-};
-
-const buttonStyle = {
-  padding: "10px 20px",
+const chatHeader = {
+  padding: "15px",
   backgroundColor: "#00ffcc",
   color: "#000",
-  border: "none",
-  borderRadius: "5px",
-  cursor: "pointer",
-  marginBottom: "20px"
+  fontWeight: "bold",
+  fontSize: "18px",
+  textAlign: "center"
 };
 
-const chatBoxStyle = {
-  maxHeight: "400px",
-  overflowY: "auto",
-  backgroundColor: "#111",
+const messagesContainer = {
+  flex: 1,
   padding: "15px",
-  borderRadius: "10px"
+  overflowY: "auto",
+  display: "flex",
+  flexDirection: "column",
+  gap: "12px"
 };
 
 const msgStyle = {
-  background: "#222",
-  color: "#fff",
-  padding: "10px",
-  margin: "5px 0",
-  borderRadius: "6px",
-  position: "relative"
+  padding: "10px 14px",
+  borderRadius: "12px",
+  maxWidth: "75%",
+  boxShadow: "0 0 5px rgba(0,0,0,0.2)",
+  fontSize: "15px",
+  lineHeight: "1.4"
 };
 
 const timeStyle = {
-  fontSize: "12px",
-  color: "#aaa",
-  marginTop: "5px"
+  fontSize: "11px",
+  color: "#888",
+  textAlign: "right",
+  marginTop: "4px"
+};
+
+const inputWrapper = {
+  display: "flex",
+  flexDirection: "column",
+  padding: "10px",
+  borderTop: "1px solid #333"
+};
+
+const inputStyle = {
+  padding: "12px",
+  borderRadius: "6px",
+  border: "none",
+  fontSize: "16px",
+  marginBottom: "8px"
+};
+
+const btnStyle = {
+  padding: "12px",
+  backgroundColor: "#00ffcc",
+  color: "#000",
+  border: "none",
+  borderRadius: "6px",
+  fontWeight: "bold",
+  cursor: "pointer"
 };
