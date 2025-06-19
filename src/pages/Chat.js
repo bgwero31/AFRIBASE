@@ -1,17 +1,14 @@
 import React, { useState, useEffect, useRef } from "react";
-import { useNavigate } from "react-router-dom";
-import { db, storage } from "../firebase"; // make sure you have storage imported from firebase config
-import { ref as dbRef, push, onValue, set } from "firebase/database";
-import { ref as storageRef, uploadBytes, getDownloadURL } from "firebase/storage";
+import { db, storage } from "../firebase"; // make sure storage is imported
+import { ref as dbRef, push, onValue } from "firebase/database";
+import { ref as storageRef, uploadBytesResumable, getDownloadURL } from "firebase/storage";
 
 export default function Chat() {
   const [name, setName] = useState("");
   const [message, setMessage] = useState("");
   const [messages, setMessages] = useState([]);
-  const [typing, setTyping] = useState(false);
-  const [fileUploading, setFileUploading] = useState(false);
+  const [showEmojiPicker, setShowEmojiPicker] = useState(false);
   const messagesEndRef = useRef(null);
-  const navigate = useNavigate();
 
   useEffect(() => {
     const chatRef = dbRef(db, "messages");
@@ -27,60 +24,56 @@ export default function Chat() {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
 
-  // Typing indicator simulation
-  useEffect(() => {
-    if (!message) {
-      setTyping(false);
-      return;
-    }
-    setTyping(true);
-    const timeout = setTimeout(() => setTyping(false), 1000);
-    return () => clearTimeout(timeout);
-  }, [message]);
-
   const sendMessage = () => {
-    if (name && message.trim()) {
+    if (name && (message.trim() !== "")) {
       push(dbRef(db, "messages"), {
         name,
-        text: message.trim(),
-        time: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+        text: message,
+        time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
         type: "text"
       });
       setMessage("");
     }
   };
 
-  const sendFile = async (file) => {
-    if (!name || !file) return;
+  // Handle image upload
+  const handleImageUpload = (e) => {
+    if (!name) return alert("Please enter your name first");
 
-    setFileUploading(true);
-    try {
-      const fileRef = storageRef(storage, `chat_files/${Date.now()}_${file.name}`);
-      await uploadBytes(fileRef, file);
-      const url = await getDownloadURL(fileRef);
+    const file = e.target.files[0];
+    if (!file) return;
 
-      push(dbRef(db, "messages"), {
-        name,
-        text: url,
-        time: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
-        type: "image"
-      });
-    } catch (error) {
-      alert("File upload failed: " + error.message);
-    }
-    setFileUploading(false);
+    const fileRef = storageRef(storage, `chatImages/${Date.now()}_${file.name}`);
+    const uploadTask = uploadBytesResumable(fileRef, file);
+
+    uploadTask.on(
+      "state_changed",
+      null,
+      (error) => {
+        console.error("Upload failed", error);
+      },
+      () => {
+        getDownloadURL(uploadTask.snapshot.ref).then((downloadURL) => {
+          push(dbRef(db, "messages"), {
+            name,
+            imageUrl: downloadURL,
+            time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+            type: "image"
+          });
+        });
+      }
+    );
   };
 
-  // Emoji picker basic (use emoji unicode directly)
+  // Handle emoji pick (simple toggle + insert emoji)
   const addEmoji = (emoji) => {
-    setMessage((prev) => prev + emoji);
+    setMessage(prev => prev + emoji);
   };
 
   return (
     <div style={chatWrapper}>
       <div style={chatHeader}>
-        <button onClick={() => navigate("/")} style={backBtn}>← Back</button>
-        <h2 style={{ margin: 0 }}>💬 Afribase Chatroom</h2>
+        <h2>💬 Welcome to Chatroom</h2>
       </div>
 
       <div style={messagesContainer}>
@@ -92,27 +85,23 @@ export default function Chat() {
               style={{
                 ...msgStyle,
                 alignSelf: isOwn ? "flex-end" : "flex-start",
-                backgroundColor: isOwn ? "#00ffcc" : "#2c2c2c",
+                backgroundColor: isOwn ? "#dcf8c6" : "#333",
                 color: isOwn ? "#000" : "#fff",
-                borderBottomLeftRadius: isOwn ? "12px" : "0px",
-                borderBottomRightRadius: isOwn ? "0px" : "12px",
-                maxWidth: "75%",
-                wordWrap: "break-word",
+                borderTopRightRadius: isOwn ? 0 : "10px",
+                borderTopLeftRadius: isOwn ? "10px" : 0,
               }}
             >
               <div style={{ fontWeight: "bold", marginBottom: "4px" }}>{msg.name}</div>
-
               {msg.type === "image" ? (
                 <img
-                  src={msg.text}
-                  alt="sent file"
-                  style={{ maxWidth: "100%", borderRadius: "10px", cursor: "pointer" }}
-                  onClick={() => window.open(msg.text, "_blank")}
+                  src={msg.imageUrl}
+                  alt="sent pic"
+                  style={{ maxWidth: "200px", borderRadius: "8px", cursor: "pointer" }}
+                  onClick={() => window.open(msg.imageUrl, "_blank")}
                 />
               ) : (
                 <div>{msg.text}</div>
               )}
-
               <div style={timeStyle}>{msg.time}</div>
             </div>
           );
@@ -127,50 +116,54 @@ export default function Chat() {
             placeholder="Enter your name"
             value={name}
             onChange={(e) => setName(e.target.value)}
-            disabled={fileUploading}
           />
         ) : (
           <>
-            <div style={{ display: "flex", gap: "8px", marginBottom: "8px" }}>
-              {/* Emoji buttons */}
-              {["😊", "😂", "🔥", "❤️", "👍"].map((emoji) => (
-                <button
-                  key={emoji}
-                  style={emojiBtn}
-                  onClick={() => addEmoji(emoji)}
-                  disabled={fileUploading}
-                >
-                  {emoji}
-                </button>
-              ))}
-            </div>
-
-            <div style={{ display: "flex", gap: "10px" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
               <input
                 style={{ ...inputStyle, flex: 1 }}
                 placeholder="Type your message"
                 value={message}
                 onChange={(e) => setMessage(e.target.value)}
                 onKeyDown={(e) => e.key === "Enter" && sendMessage()}
-                disabled={fileUploading}
               />
-              <label style={uploadLabel}>
+              {/* Image upload button */}
+              <label style={iconButton} title="Send Image">
                 📎
                 <input
                   type="file"
                   accept="image/*"
-                  onChange={(e) => sendFile(e.target.files[0])}
                   style={{ display: "none" }}
-                  disabled={fileUploading}
+                  onChange={handleImageUpload}
                 />
               </label>
-              <button onClick={sendMessage} style={btnStyle} disabled={fileUploading || !message.trim()}>
-                Send
+
+              {/* Emoji picker button */}
+              <button
+                onClick={() => setShowEmojiPicker(!showEmojiPicker)}
+                style={iconButton}
+                title="Add Emoji"
+              >
+                😊
               </button>
             </div>
 
-            {typing && <div style={typingIndicator}>Typing...</div>}
-            {fileUploading && <div style={typingIndicator}>Uploading file...</div>}
+            <button onClick={sendMessage} style={btnStyle}>Send</button>
+
+            {/* Simple emoji picker */}
+            {showEmojiPicker && (
+              <div style={emojiPicker}>
+                {["😀", "😂", "😍", "😎", "👍", "🙏", "🔥", "❤️"].map((emoji) => (
+                  <span
+                    key={emoji}
+                    style={{ fontSize: "24px", cursor: "pointer", margin: "5px" }}
+                    onClick={() => addEmoji(emoji)}
+                  >
+                    {emoji}
+                  </span>
+                ))}
+              </div>
+            )}
           </>
         )}
       </div>
@@ -182,10 +175,8 @@ const chatWrapper = {
   display: "flex",
   flexDirection: "column",
   height: "100vh",
-  background:
-    "url('https://www.transparenttextures.com/patterns/dark-mosaic.png'), #121212",
-  color: "#fff",
-  fontFamily: "Poppins, sans-serif",
+  backgroundColor: "#121212",
+  fontFamily: "Poppins, sans-serif"
 };
 
 const chatHeader = {
@@ -194,19 +185,7 @@ const chatHeader = {
   color: "#000",
   fontWeight: "bold",
   fontSize: "18px",
-  textAlign: "center",
-  position: "relative",
-};
-
-const backBtn = {
-  position: "absolute",
-  left: "15px",
-  top: "15px",
-  background: "none",
-  border: "none",
-  fontSize: "18px",
-  cursor: "pointer",
-  color: "#000",
+  textAlign: "center"
 };
 
 const messagesContainer = {
@@ -215,70 +194,65 @@ const messagesContainer = {
   overflowY: "auto",
   display: "flex",
   flexDirection: "column",
-  gap: "12px",
+  gap: "12px"
 };
 
 const msgStyle = {
-  padding: "12px 16px",
+  padding: "10px 14px",
   borderRadius: "12px",
   maxWidth: "75%",
-  boxShadow: "0 2px 5px rgba(0,0,0,0.2)",
+  boxShadow: "0 0 5px rgba(0,0,0,0.2)",
   fontSize: "15px",
-  lineHeight: "1.5",
+  lineHeight: "1.4"
 };
 
 const timeStyle = {
   fontSize: "11px",
-  color: "#aaa",
+  color: "#888",
   textAlign: "right",
-  marginTop: "6px",
+  marginTop: "4px"
 };
 
 const inputWrapper = {
-  padding: "12px",
-  borderTop: "1px solid #333",
-  backgroundColor: "#1b1b1b",
+  display: "flex",
+  flexDirection: "column",
+  padding: "10px",
+  borderTop: "1px solid #333"
 };
 
 const inputStyle = {
   padding: "12px",
-  borderRadius: "8px",
+  borderRadius: "6px",
   border: "none",
   fontSize: "16px",
+  marginBottom: "8px"
 };
 
 const btnStyle = {
-  padding: "12px 16px",
+  padding: "12px",
   backgroundColor: "#00ffcc",
   color: "#000",
   border: "none",
-  borderRadius: "8px",
+  borderRadius: "6px",
   fontWeight: "bold",
-  cursor: "pointer",
+  cursor: "pointer"
 };
 
-const emojiBtn = {
-  background: "none",
+const iconButton = {
+  cursor: "pointer",
+  fontSize: "24px",
+  background: "transparent",
   border: "none",
-  fontSize: "22px",
-  cursor: "pointer",
   color: "#00ffcc",
+  userSelect: "none"
 };
 
-const uploadLabel = {
-  backgroundColor: "#00ffcc",
-  color: "#000",
+const emojiPicker = {
+  marginTop: "10px",
+  padding: "10px",
+  backgroundColor: "#222",
   borderRadius: "8px",
-  padding: "8px 12px",
-  fontSize: "18px",
-  cursor: "pointer",
-  userSelect: "none",
   display: "flex",
-  alignItems: "center",
-};
-
-const typingIndicator = {
-  marginTop: "8px",
-  fontSize: "14px",
-  color: "#aaa",
+  flexWrap: "wrap",
+  justifyContent: "center"
 };
