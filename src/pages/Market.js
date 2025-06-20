@@ -10,6 +10,7 @@ export default function Marketplace() {
   const [price, setPrice] = useState("");
   const [category, setCategory] = useState("");
   const [image, setImage] = useState(null);
+  const [search, setSearch] = useState("");
 
   useEffect(() => {
     const productRef = ref(db, "products");
@@ -48,9 +49,28 @@ export default function Marketplace() {
     alert("Product posted!");
   };
 
+  const filteredProducts = products.filter(p =>
+    p.title.toLowerCase().includes(search.toLowerCase()) ||
+    p.description.toLowerCase().includes(search.toLowerCase()) ||
+    p.category.toLowerCase().includes(search.toLowerCase())
+  );
+
   return (
     <div style={pageStyle}>
-      <h2 style={gradientTitle}>AFRIBASE MARKETPLACE</h2>
+      <h2 style={headerStyle}>
+        {"AFRIBASE MARKETPLACE".split("").map((char, i) => (
+          <span key={i} style={{ ...letterStyle, animationDelay: `${i * 0.1}s` }}>
+            {char}
+          </span>
+        ))}
+      </h2>
+
+      <input
+        style={searchInput}
+        placeholder="🔍 Search products..."
+        value={search}
+        onChange={(e) => setSearch(e.target.value)}
+      />
 
       <div style={formStyle}>
         <input style={inputStyle} placeholder="Product Title" value={title} onChange={(e) => setTitle(e.target.value)} />
@@ -69,14 +89,14 @@ export default function Marketplace() {
       </div>
 
       <div style={productGrid}>
-        {products.map((p, i) => (
+        {filteredProducts.map((p, i) => (
           <div key={i} style={cardStyle}>
             <img src={p.image} alt="product" style={imgStyle} />
             <h3>{p.title}</h3>
             <p>{p.description}</p>
             <strong style={{ color: "#00ffcc" }}>{p.price}</strong>
             <div style={categoryStyle}>📂 {p.category}</div>
-            <div style={timeStyle}>{p.time}</div>
+            <div style={{ fontSize: "12px", color: "#aaa", marginTop: "5px" }}>{p.time}</div>
             <button style={contactBtn}>📞 Contact Seller</button>
           </div>
         ))}
@@ -85,6 +105,7 @@ export default function Marketplace() {
   );
 }
 
+// === Styles ===
 const pageStyle = {
   padding: "20px",
   background: "#121212",
@@ -93,14 +114,35 @@ const pageStyle = {
   fontFamily: "Poppins, sans-serif"
 };
 
-const gradientTitle = {
+const headerStyle = {
   textAlign: "center",
-  fontSize: "32px",
+  marginBottom: "25px",
+  fontSize: "34px",
   fontWeight: "900",
-  background: "linear-gradient(to right, #00ffcc, #000)",
+  letterSpacing: "2px",
+  display: "flex",
+  justifyContent: "center",
+  flexWrap: "wrap"
+};
+
+const letterStyle = {
+  display: "inline-block",
+  background: "linear-gradient(to top, #00ffcc, #000)",
   WebkitBackgroundClip: "text",
   WebkitTextFillColor: "transparent",
-  marginBottom: "30px"
+  animation: "flickerColor 2s infinite",
+  fontFamily: "Poppins, sans-serif"
+};
+
+const searchInput = {
+  width: "100%",
+  maxWidth: "400px",
+  margin: "0 auto 20px",
+  display: "block",
+  padding: "10px 14px",
+  borderRadius: "8px",
+  border: "none",
+  fontSize: "16px"
 };
 
 const formStyle = {
@@ -109,19 +151,15 @@ const formStyle = {
   gap: "10px",
   maxWidth: "400px",
   margin: "0 auto",
-  marginBottom: "30px",
-  background: "#1e1e1e",
-  padding: "20px",
-  borderRadius: "10px",
-  boxShadow: "0 0 15px #00ffcc20"
+  marginBottom: "30px"
 };
 
 const inputStyle = {
   padding: "12px",
   borderRadius: "8px",
-  border: "1px solid #333",
+  border: "none",
   fontSize: "16px",
-  background: "#000",
+  backgroundColor: "#1f1f1f",
   color: "#fff"
 };
 
@@ -132,24 +170,24 @@ const textareaStyle = {
 };
 
 const buttonStyle = {
-  padding: "14px",
+  padding: "12px",
   backgroundColor: "#00ffcc",
-  color: "#000",
+  border: "none",
   fontWeight: "bold",
   fontSize: "16px",
-  borderRadius: "8px",
   cursor: "pointer",
-  border: "none"
+  borderRadius: "8px",
+  color: "#000"
 };
 
 const productGrid = {
   display: "grid",
-  gridTemplateColumns: "repeat(auto-fit, minmax(250px, 1fr))",
+  gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))",
   gap: "20px"
 };
 
 const cardStyle = {
-  backgroundColor: "#1a1a1a",
+  backgroundColor: "#1e1e1e",
   padding: "15px",
   borderRadius: "12px",
   boxShadow: "0 0 10px #00ffcc30",
@@ -160,7 +198,7 @@ const cardStyle = {
 
 const imgStyle = {
   width: "100%",
-  height: "180px",
+  height: "160px",
   objectFit: "cover",
   borderRadius: "8px",
   marginBottom: "10px"
@@ -168,7 +206,7 @@ const imgStyle = {
 
 const contactBtn = {
   marginTop: "10px",
-  padding: "10px",
+  padding: "8px",
   backgroundColor: "#00ffcc",
   color: "#000",
   border: "none",
@@ -178,13 +216,7 @@ const contactBtn = {
 };
 
 const categoryStyle = {
-  marginTop: "6px",
+  marginTop: "8px",
   fontSize: "14px",
   color: "#00ffcc"
-};
-
-const timeStyle = {
-  fontSize: "12px",
-  color: "#aaa",
-  marginTop: "4px"
 };
