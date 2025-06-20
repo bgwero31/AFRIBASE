@@ -136,7 +136,7 @@ export default function Marketplace() {
       </h2>
 
       <input style={{ ...searchInput, background: isDark ? "#1f1f1f" : "#fff", color: isDark ? "#fff" : "#000" }}
-        placeholder="ðŸ” Search products..." value={search} onChange={e => setSearch(e.target.value)} />
+        placeholder=🔎 Search products..." value={search} onChange={e => setSearch(e.target.value)} />
 
       <div style={formStyle}>
         <input style={inputStyle(isDark)} placeholder="Title" value={title} onChange={e => setTitle(e.target.value)} />
@@ -144,11 +144,11 @@ export default function Marketplace() {
         <input style={inputStyle(isDark)} placeholder="Price" value={price} onChange={e => setPrice(e.target.value)} />
         <select style={inputStyle(isDark)} value={category} onChange={e => setCategory(e.target.value)}>
           <option value="">Category</option>
-          <option>ðŸ“± Electronics</option>
-          <option>ðŸ‘— Clothing</option>
-          <option>ðŸ² Food</option>
-          <option>ðŸš— Vehicles</option>
-          <option>ðŸ”§ Other</option>
+          <option>📱 Electronics</option>
+          <option> 👗 Clothing</option>
+          <option🍿 Food</option>
+          <option>🚗 Vehicles</option>
+          <option> Other</option>
         </select>
         <input type="file" onChange={e => setImage(e.target.files[0])} />
         <button style={buttonStyle} onClick={handlePost}>ðŸ“¤ Post</button>
@@ -164,8 +164,8 @@ export default function Marketplace() {
             <div style={categoryStyle}>ðŸ“‚ {p.category}</div>
             <div style={{ fontSize: 12, color: "#aaa", margin: "5px 0" }}>{p.time}</div>
             <div>
-              <span onClick={() => handleLike(p.id, "like")} style={emojiBtnStyle}>ðŸ‘ {p.likes}</span>
-              <span onClick={() => handleLike(p.id, "dislike")} style={emojiBtnStyle}>ðŸ‘Ž {p.dislikes}</span>
+              <span onClick={() => handleLike(p.id, "like")} style={emojiBtnStyle}> 👍 {p.likes}</span>
+              <span onClick={() => handleLike(p.id, "dislike")} style={emojiBtnStyle}>👎 {p.dislikes}</span>
             </div>
             <a href={`https://wa.me/?text=Hi I'm interested in your ${encodeURIComponent(p.title)}`} target="_blank" rel="noreferrer" style={waBtnStyle}>ðŸ’¬ WhatsApp</a>
             {Object.entries(p.comments).map(([key, text]) => (
