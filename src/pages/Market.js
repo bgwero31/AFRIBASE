@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { db, storage } from "../firebase";
-import { ref, push, onValue } from "firebase/database";
+import { ref, push, onValue, update } from "firebase/database";
 import { ref as storageRef, uploadBytes, getDownloadURL } from "firebase/storage";
 
 export default function Marketplace() {
@@ -13,13 +13,19 @@ export default function Marketplace() {
   const [search, setSearch] = useState("");
   const [darkMode, setDarkMode] = useState(true);
   const [modal, setModal] = useState(null);
+  const [comment, setComment] = useState("");
 
   useEffect(() => {
     const productRef = ref(db, "products");
     onValue(productRef, (snapshot) => {
       const data = snapshot.val();
       if (data) {
-        const productArray = Object.values(data);
+        const productArray = Object.entries(data).map(([id, val]) => ({
+          id,
+          ...val,
+          likes: val.likes || 0,
+          comments: val.comments || [],
+        }));
         setProducts(productArray.reverse());
       }
     });
@@ -40,7 +46,9 @@ export default function Marketplace() {
       price,
       category,
       image: imageUrl,
-      time: new Date().toLocaleString()
+      time: new Date().toLocaleString(),
+      likes: 0,
+      comments: []
     });
 
     setTitle("");
@@ -49,6 +57,17 @@ export default function Marketplace() {
     setCategory("");
     setImage(null);
     alert("Product posted!");
+  };
+
+  const handleLike = (id, currentLikes) => {
+    const likesRef = ref(db, `products/${id}`);
+    update(likesRef, { likes: currentLikes + 1 });
+  };
+
+  const handleComment = (id, newComment) => {
+    const commentsRef = ref(db, `products/${id}/comments`);
+    push(commentsRef, newComment);
+    setComment("");
   };
 
   const filteredProducts = products.filter(p =>
@@ -80,7 +99,7 @@ export default function Marketplace() {
         {darkMode ? "☀️" : "🌙"}
       </button>
 
-      <h2 style={headerStyle}>
+      <h2 style={{ ...headerStyle, fontSize: "24px", flexWrap: "wrap" }}>
         {"AFRIBASE MARKETPLACE".split("").map((char, i) => (
           <span key={i} style={{ ...letterStyle, animationDelay: `${i * 0.1}s` }}>
             {char}
@@ -125,7 +144,15 @@ export default function Marketplace() {
             <strong style={{ color: "#00ffcc" }}>{p.price}</strong>
             <div style={categoryStyle}>📂 {p.category}</div>
             <div style={{ fontSize: "12px", color: isDark ? "#aaa" : "#555", marginTop: "5px" }}>{p.time}</div>
-            <button style={contactBtn}>📞 Contact Seller</button>
+            <button style={contactBtn} onClick={() => window.open(`https://wa.me/?text=Hi%20I'm%20interested%20in%20your%20${p.title}`, "_blank")}>💬 WhatsApp</button>
+            <button onClick={() => handleLike(p.id, p.likes)}>👍 {p.likes}</button>
+            <input
+              placeholder="💬 Write comment"
+              value={comment}
+              onChange={(e) => setComment(e.target.value)}
+              style={{ ...inputStyle, marginTop: "5px" }}
+            />
+            <button onClick={() => handleComment(p.id, comment)} style={buttonStyle}>Post</button>
           </div>
         ))}
       </div>
@@ -139,7 +166,7 @@ export default function Marketplace() {
             <p>📂 {modal.category}</p>
             <p style={{ fontWeight: "bold", color: "#00ffcc" }}>{modal.price}</p>
             <p style={{ fontSize: "12px", color: "#aaa" }}>{modal.time}</p>
-            <button style={contactBtn}>📞 Contact Seller</button>
+            <button style={contactBtn} onClick={() => window.open(`https://wa.me/?text=Hi%20I'm%20interested%20in%20your%20${modal.title}`, "_blank")}>💬 Chat on WhatsApp</button>
           </div>
         </div>
       )}
@@ -147,7 +174,7 @@ export default function Marketplace() {
   );
 }
 
-// === Styles ===
+// === Styles === (unchanged except header + product grid)
 const pageStyle = {
   padding: "20px",
   minHeight: "100vh",
@@ -158,9 +185,8 @@ const pageStyle = {
 const headerStyle = {
   textAlign: "center",
   marginBottom: "25px",
-  fontSize: "34px",
   fontWeight: "900",
-  letterSpacing: "2px",
+  letterSpacing: "1.5px",
   display: "flex",
   justifyContent: "center",
   flexWrap: "wrap"
@@ -211,38 +237,38 @@ const textareaStyle = {
 };
 
 const buttonStyle = {
-  padding: "12px",
+  padding: "10px",
   backgroundColor: "#00ffcc",
   border: "none",
   fontWeight: "bold",
-  fontSize: "16px",
+  fontSize: "14px",
   cursor: "pointer",
-  borderRadius: "8px",
-  color: "#000"
+  borderRadius: "6px",
+  color: "#000",
+  marginTop: "5px"
 };
 
 const productGrid = {
   display: "grid",
-  gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))",
-  gap: "20px"
+  gridTemplateColumns: "repeat(auto-fill, minmax(170px, 1fr))",
+  gap: "16px"
 };
 
 const cardStyle = {
-  padding: "15px",
-  borderRadius: "12px",
+  padding: "12px",
+  borderRadius: "10px",
   boxShadow: "0 0 10px #00ffcc30",
   display: "flex",
-  flexDirection: "column",
-  justifyContent: "space-between",
-  cursor: "pointer"
+  flexDirection: "column"
 };
 
 const imgStyle = {
   width: "100%",
-  height: "160px",
+  height: "140px",
   objectFit: "cover",
   borderRadius: "8px",
-  marginBottom: "10px"
+  marginBottom: "10px",
+  cursor: "pointer"
 };
 
 const contactBtn = {
