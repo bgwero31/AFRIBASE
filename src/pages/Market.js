@@ -1,14 +1,10 @@
 import React, { useState, useEffect } from "react";
 import { db } from "../firebase";
 import { ref, push, onValue, update, remove } from "firebase/database";
-import { getAuth } from "firebase/auth";
 
 const IMGBB_API_KEY = "30df4aa05f1af3b3b58ee8a74639e5cf";
 
 export default function Marketplace() {
-  const auth = getAuth();
-  const user = auth.currentUser;
-
   const [products, setProducts] = useState([]);
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
@@ -19,6 +15,7 @@ export default function Marketplace() {
   const [darkMode, setDarkMode] = useState(true);
   const [modal, setModal] = useState(null);
   const [commentInputs, setCommentInputs] = useState({});
+  const [likedProducts, setLikedProducts] = useState({}); // To track likes toggle per user/session
 
   useEffect(() => {
     const productRef = ref(db, "products");
@@ -30,15 +27,11 @@ export default function Marketplace() {
           ...val,
           likes: val.likes || 0,
           dislikes: val.dislikes || 0,
-          likesByUser: val.likesByUser || {},
-          dislikesByUser: val.dislikesByUser || {},
           comments: val.comments
-            ? Object.entries(val.comments).map(([cid, comment]) => ({ id: cid, ...comment }))
-            : [],
+            ? Object.entries(val.comments).map(([cid, c]) => ({ id: cid, text: c }))
+            : []
         }));
         setProducts(items.reverse());
-      } else {
-        setProducts([]);
       }
     });
   }, []);
@@ -52,7 +45,6 @@ export default function Marketplace() {
     });
 
   const handlePost = async () => {
-    if (!user) return alert("You must be signed in to post.");
     if (!title || !description || !price || !category || !image) {
       return alert("Please fill in all fields.");
     }
@@ -67,7 +59,7 @@ export default function Marketplace() {
       const data = await res.json();
       if (!data.success) throw new Error("Image upload failed");
       const imageUrl = data.data.url;
-
+      // Optionally save delete_url if you want to support deletion from imgbb later
       push(ref(db, "products"), {
         title,
         description,
@@ -77,101 +69,86 @@ export default function Marketplace() {
         time: new Date().toLocaleString(),
         likes: 0,
         dislikes: 0,
-        userId: user.uid,
-        username: user.displayName || "Anonymous",
-        userImage: user.photoURL || "",
-        likesByUser: {},
-        dislikesByUser: {},
-        comments: {},
       });
-
       setTitle("");
       setDescription("");
       setPrice("");
       setCategory("");
       setImage(null);
-      alert("✔️ Product posted!");
+      alert("✅ Product posted!");
     } catch (error) {
       console.error(error);
       alert("Image upload or post failed. Try again.");
     }
   };
 
-  const handleLike = (productId) => {
-    if (!user) return alert("You must be signed in to like.");
-    const prod = products.find((p) => p.id === productId);
-    if (!prod) return;
+  const handleLike = (id) => {
+    const prodRef = ref(db, `products/${id}`);
+    const liked = likedProducts[id];
+    const product = products.find((p) => p.id === id);
+    if (!product) return;
 
-    const prodRef = ref(db, `products/${productId}`);
-
-    const userId = user.uid;
-    const hasLiked = prod.likesByUser[userId];
-    const hasDisliked = prod.dislikesByUser[userId];
-
-    const updates = {};
-
-    if (hasLiked) {
-      updates["likes"] = prod.likes - 1;
-      updates[`likesByUser/${userId}`] = null;
+    if (liked) {
+      // Remove like
+      update(prodRef, { likes: Math.max(product.likes - 1, 0) });
+      setLikedProducts((prev) => ({ ...prev, [id]: false }));
     } else {
-      updates["likes"] = prod.likes + 1;
-      updates[`likesByUser/${userId}`] = true;
-      if (hasDisliked) {
-        updates["dislikes"] = prod.dislikes - 1;
-        updates[`dislikesByUser/${userId}`] = null;
-      }
+      // Add like
+      update(prodRef, { likes: product.likes + 1 });
+      setLikedProducts((prev) => ({ ...prev, [id]: true }));
     }
-    update(prodRef, updates);
   };
 
-  const handleDislike = (productId) => {
-    if (!user) return alert("You must be signed in to dislike.");
-    const prod = products.find((p) => p.id === productId);
-    if (!prod) return;
+  const handleDislike = (id) => {
+    const prodRef = ref(db, `products/${id}`);
+    const disliked = likedProducts[`dislike_${id}`];
+    const product = products.find((p) => p.id === id);
+    if (!product) return;
 
-    const prodRef = ref(db, `products/${productId}`);
-
-    const userId = user.uid;
-    const hasDisliked = prod.dislikesByUser[userId];
-    const hasLiked = prod.likesByUser[userId];
-
-    const updates = {};
-
-    if (hasDisliked) {
-      updates["dislikes"] = prod.dislikes - 1;
-      updates[`dislikesByUser/${userId}`] = null;
+    if (disliked) {
+      update(prodRef, { dislikes: Math.max(product.dislikes - 1, 0) });
+      setLikedProducts((prev) => ({ ...prev, [`dislike_${id}`]: false }));
     } else {
-      updates["dislikes"] = prod.dislikes + 1;
-      updates[`dislikesByUser/${userId}`] = true;
-      if (hasLiked) {
-        updates["likes"] = prod.likes - 1;
-        updates[`likesByUser/${userId}`] = null;
-      }
+      update(prodRef, { dislikes: product.dislikes + 1 });
+      setLikedProducts((prev) => ({ ...prev, [`dislike_${id}`]: true }));
     }
-    update(prodRef, updates);
   };
 
   const handleComment = (productId) => {
-    if (!user) return alert("You must be signed in to comment.");
-    const text = commentInputs[productId]?.trim();
+    const text = commentInputs[productId];
     if (!text) return;
-
-    const commentRef = ref(db, `products/${productId}/comments`);
-    push(commentRef, {
-      text,
-      userId: user.uid,
-      username: user.displayName || "Anonymous",
-      userImage: user.photoURL || "",
-      time: new Date().toLocaleString(),
-    });
+    push(ref(db, `products/${productId}/comments`), text);
     setCommentInputs({ ...commentInputs, [productId]: "" });
   };
 
-  const handleDeleteComment = (productId, commentId, commentUserId) => {
-    if (!user) return alert("You must be signed in.");
-    if (user.uid !== commentUserId) return alert("You can only delete your own comments.");
-    const commentRef = ref(db, `products/${productId}/comments/${commentId}`);
-    remove(commentRef);
+  const handleDeleteComment = (productId, commentId) => {
+    if (window.confirm("❌ Delete this comment?")) {
+      remove(ref(db, `products/${productId}/comments/${commentId}`));
+    }
+  };
+
+  const handleDeleteProduct = async (id) => {
+    if (!window.confirm("🗑️ Delete this product?")) return;
+    try {
+      await remove(ref(db, `products/${id}`));
+      alert("✅ Product deleted!");
+    } catch (err) {
+      console.error(err);
+      alert("❌ Failed to delete product.");
+    }
+  };
+
+  // Long press detection logic
+  let pressTimer = null;
+
+  const handlePressStart = (id) => {
+    pressTimer = setTimeout(() => {
+      handleDeleteProduct(id);
+    }, 800); // 800ms long press
+  };
+
+  const handlePressEnd = () => {
+    clearTimeout(pressTimer);
   };
 
   const filtered = products.filter(
@@ -183,9 +160,15 @@ export default function Marketplace() {
   const isDark = darkMode;
 
   return (
-    <div style={{ ...pageStyle, background: isDark ? "#121212" : "#f4f4f4", color: isDark ? "#fff" : "#000" }}>
+    <div
+      style={{
+        ...pageStyle,
+        background: isDark ? "#121212" : "#f4f4f4",
+        color: isDark ? "#fff" : "#000",
+      }}
+    >
       <button style={toggleBtnStyle(isDark)} onClick={() => setDarkMode(!darkMode)}>
-        {isDark ? "🌙" : "☀️"}
+        {isDark ? "🌙" : "🌞"}
       </button>
 
       <h2 style={headerStyle}>
@@ -222,140 +205,101 @@ export default function Marketplace() {
           <option value="Clothing">👗 Clothing</option>
           <option value="Food">🍲 Food</option>
           <option value="Vehicles">🚗 Vehicles</option>
-          <option value="Other">🛠️ Other</option>
+          <option value="Other">❓ Other</option>
         </select>
         <input type="file" onChange={(e) => setImage(e.target.files[0])} />
         <button style={buttonStyle} onClick={handlePost}>
-          📤 Post
+          📝 Post
         </button>
       </div>
 
       <div style={productGrid}>
-        {filtered.map((p) => {
-          const userId = user?.uid;
-          return (
-            <div key={p.id} style={{ ...cardStyle(isDark) }}>
-              <img src={p.image} style={imgStyle} onClick={() => setModal(p)} alt={p.title} />
-              <h3>{p.title}</h3>
-              <p style={{ flexGrow: 1 }}>{p.description}</p>
-              <strong style={{ color: "#00ffcc" }}>{p.price}</strong>
-              <div style={categoryStyle}>📂 {p.category}</div>
-              <div style={{ fontSize: "12px", color: isDark ? "#aaa" : "#555", marginBottom: "8px" }}>{p.time}</div>
-
-              <div style={{ display: "flex", alignItems: "center", marginBottom: 8 }}>
-                {p.userImage && (
-                  <img
-                    src={p.userImage}
-                    alt={p.username}
-                    style={{ width: 28, height: 28, borderRadius: "50%", marginRight: 8, objectFit: "cover" }}
-                  />
-                )}
-                <span style={{ fontSize: 14, color: isDark ? "#00ffcc" : "#00796b" }}>{p.username}</span>
-              </div>
-
-              <div style={socialRowStyle}>
-                <div>
-                  <span
-                    onClick={() => handleLike(p.id)}
-                    style={{
-                      ...emojiBtnStyle,
-                      fontWeight: p.likesByUser && p.likesByUser[userId] ? "bold" : "normal",
-                      color: p.likesByUser && p.likesByUser[userId] ? "#00ffcc" : undefined,
-                      cursor: "pointer",
-                    }}
-                    role="button"
-                    aria-label="Like"
-                  >
-                    👍 {p.likes}
-                  </span>
-                  <span
-                    onClick={() => handleDislike(p.id)}
-                    style={{
-                      ...emojiBtnStyle,
-                      fontWeight: p.dislikesByUser && p.dislikesByUser[userId] ? "bold" : "normal",
-                      color: p.dislikesByUser && p.dislikesByUser[userId] ? "#ff5252" : undefined,
-                      cursor: "pointer",
-                    }}
-                    role="button"
-                    aria-label="Dislike"
-                  >
-                    👎 {p.dislikes}
-                  </span>
-                </div>
-                <a
-                  href={`https://wa.me/?text=Hi I'm interested in your ${encodeURIComponent(p.title)}`}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  style={waBtnStyle}
-                >
-                  💬 WhatsApp
-                </a>
-              </div>
-
-              {/* Comments */}
+        {filtered.map((p) => (
+          <div
+            key={p.id}
+            style={{ ...cardStyle(isDark) }}
+            onMouseDown={() => handlePressStart(p.id)}
+            onMouseUp={handlePressEnd}
+            onTouchStart={() => handlePressStart(p.id)}
+            onTouchEnd={handlePressEnd}
+          >
+            <img src={p.image} style={imgStyle} onClick={() => setModal(p)} alt={p.title} />
+            <h3>{p.title}</h3>
+            <p style={{ flexGrow: 1 }}>{p.description}</p>
+            <strong style={{ color: "#00ffcc" }}>{p.price}</strong>
+            <div style={categoryStyle}>📂 {p.category}</div>
+            <div style={{ fontSize: "12px", color: isDark ? "#aaa" : "#555", marginBottom: "8px" }}>{p.time}</div>
+            <div style={socialRowStyle}>
               <div>
-                {p.comments.map((c) => (
-                  <div
-                    key={c.id}
-                    style={{
-                      display: "flex",
-                      alignItems: "center",
-                      background: isDark ? "#222" : "#eee",
-                      padding: "6px 10px",
-                      borderRadius: 6,
-                      marginTop: 8,
-                    }}
-                  >
-                    {c.userImage && (
-                      <img
-                        src={c.userImage}
-                        alt={c.username}
-                        style={{ width: 24, height: 24, borderRadius: "50%", marginRight: 8, objectFit: "cover" }}
-                      />
-                    )}
-                    <div style={{ flexGrow: 1 }}>
-                      <strong style={{ color: isDark ? "#00ffcc" : "#00796b", fontSize: 13 }}>{c.username}:</strong>{" "}
-                      <span>{c.text}</span>
-                      <div style={{ fontSize: 10, color: isDark ? "#888" : "#666" }}>{c.time}</div>
-                    </div>
-                    {userId === c.userId && (
-                      <button
-                        onClick={() => handleDeleteComment(p.id, c.id, c.userId)}
-                        style={{
-                          marginLeft: 10,
-                          background: "transparent",
-                          border: "none",
-                          color: "#ff5252",
-                          fontWeight: "bold",
-                          cursor: "pointer",
-                          fontSize: 16,
-                        }}
-                        aria-label="Delete comment"
-                        title="Delete comment"
-                      >
-                        ❌
-                      </button>
-                    )}
-                  </div>
-                ))}
-                <input
-                  style={commentStyle(isDark)}
-                  placeholder="💬 Add comment..."
-                  value={commentInputs[p.id] || ""}
-                  onChange={(e) => setCommentInputs({ ...commentInputs, [p.id]: e.target.value })}
-                />
-                <button style={buttonStyle} onClick={() => handleComment(p.id)}>
-                  Post
+                <span
+                  onClick={() => handleLike(p.id)}
+                  style={{ ...emojiBtnStyle, color: likedProducts[p.id] ? "#00ffcc" : undefined }}
+                >
+                  👍 {p.likes}
+                </span>
+                <span
+                  onClick={() => handleDislike(p.id)}
+                  style={{ ...emojiBtnStyle, color: likedProducts[`dislike_${p.id}`] ? "#ff6347" : undefined }}
+                >
+                  👎 {p.dislikes}
+                </span>
+              </div>
+              <a
+                href={`https://wa.me/?text=Hi I'm interested in your ${encodeURIComponent(p.title)}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                style={waBtnStyle}
+              >
+                💬 WhatsApp
+              </a>
+            </div>
+            {p.comments.map((c) => (
+              <div
+                key={c.id}
+                style={{
+                  display: "flex",
+                  justifyContent: "space-between",
+                  alignItems: "center",
+                  background: isDark ? "#222" : "#eee",
+                  borderRadius: "6px",
+                  padding: "4px 8px",
+                  marginTop: 6,
+                  fontSize: 14,
+                }}
+              >
+                <span>{c.text}</span>
+                <button
+                  onClick={() => handleDeleteComment(p.id, c.id)}
+                  style={{
+                    background: "transparent",
+                    border: "none",
+                    color: "red",
+                    cursor: "pointer",
+                    fontWeight: "bold",
+                    fontSize: 16,
+                  }}
+                  title="Delete comment"
+                >
+                  ❌
                 </button>
               </div>
-            </div>
-          );
-        })}
+            ))}
+            <input
+              style={commentStyle(isDark)}
+              placeholder="💬 Add comment..."
+              value={commentInputs[p.id] || ""}
+              onChange={(e) => setCommentInputs({ ...commentInputs, [p.id]: e.target.value })}
+            />
+            <button style={buttonStyle} onClick={() => handleComment(p.id)}>
+              Post
+            </button>
+          </div>
+        ))}
       </div>
 
       {modal && (
         <div style={modalOverlay} onClick={() => setModal(null)}>
-          <div style={modalContent} onClick={(e) => e.stopPropagation()}>
+          <div style={modalContent}>
             <img src={modal.image} style={modalImage} alt={modal.title} />
             <h2>{modal.title}</h2>
             <p>{modal.description}</p>
@@ -378,174 +322,128 @@ const toggleBtnStyle = (isDark) => ({
   top: 20,
   right: 20,
   fontSize: 20,
-  background: isDark ? "#333" : "#ddd",
-  color: isDark ? "#00ffcc" : "#00796b",
+  background: isDark ? "#00ffcc" : "#121212",
+  color: isDark ? "#000" : "#fff",
+  padding: 10,
+  borderRadius: 50,
   border: "none",
-  borderRadius: 20,
-  padding: "6px 12px",
-  cursor: "pointer",
+  boxShadow: "0 0 10px #00ffcc99",
+  zIndex: 2,
 });
-
-const pageStyle = {
-  minHeight: "100vh",
-  padding: 20,
-  fontFamily: "'Segoe UI', Tahoma, Geneva, Verdana, sans-serif",
-  position: "relative",
-};
-
+const pageStyle = { padding: 20, minHeight: "100vh", fontFamily: "Poppins", position: "relative" };
 const headerStyle = {
-  fontSize: 28,
-  fontWeight: "900",
-  marginBottom: 20,
+  textAlign: "center",
+  margin: "20px 0",
+  fontWeight: "800",
   display: "flex",
   justifyContent: "center",
+  flexWrap: "wrap",
 };
-
 const letterStyle = {
-  display: "inline-block",
-  animationName: "fadeInUp",
-  animationDuration: "0.6s",
-  animationFillMode: "forwards",
-  opacity: 0,
+  background: "linear-gradient(to top,#00ffcc,#000)",
+  WebkitBackgroundClip: "text",
+  WebkitTextFillColor: "transparent",
+  animation : "flickerColor 2s infinite",
 };
-
 const searchInput = {
   width: "100%",
-  padding: 10,
-  fontSize: 16,
-  marginBottom: 20,
-  borderRadius: 8,
-  border: "1px solid #888",
-};
-
-const formStyle = {
-  display: "flex",
-  flexDirection: "column",
-  gap: 10,
-  marginBottom: 30,
-};
-
-const inputStyle = (isDark) => ({
-  padding: 10,
-  fontSize: 16,
-  borderRadius: 6,
-  border: "1px solid #555",
-  background: isDark ? "#222" : "#fff",
-  color: isDark ? "#fff" : "#000",
-});
-
-const textStyle = (isDark) => ({
-  ...inputStyle(isDark),
-  minHeight: 60,
-  resize: "vertical",
-});
-
-const buttonStyle = {
-  padding: "10px 20px",
-  fontSize: 16,
-  background: "#00ffcc",
+  maxWidth: 400,
+  display: "block",
+  margin: "0 auto 20px",
+  padding: "10px",
   border: "none",
   borderRadius: 8,
-  cursor: "pointer",
-  fontWeight: "bold",
+  fontSize: 16,
 };
-
+const formStyle = { display: "flex", flexDirection: "column", gap: 10, maxWidth: 400, margin: "0 auto 20px" };
+const inputStyle = (isDark) => ({
+  padding: 12,
+  borderRadius: 8,
+  border: "none",
+  fontSize: 16,
+  background: isDark ? "#1f1f1f" : "#fff",
+  color: isDark ? "#fff" : "#000",
+});
+const textStyle = inputStyle;
+const buttonStyle = {
+  padding: 10,
+  backgroundColor: "#00ffcc",
+  color: "#000",
+  border: "none",
+  borderRadius: 6,
+  fontSize: 14,
+  cursor: "pointer",
+  marginTop: 5,
+};
 const productGrid = {
   display: "grid",
-  gridTemplateColumns: "repeat(auto-fill,minmax(280px,1fr))",
-  gap: 20,
+  gridTemplateColumns: "repeat(auto-fill,minmax(170px,1fr))",
+  gap: 16,
 };
-
 const cardStyle = (isDark) => ({
-  background: isDark ? "#1e1e1e" : "#fff",
-  borderRadius: 12,
-  padding: 15,
+  padding: 12,
+  borderRadius: 10,
+  boxShadow: "0 0 10px #00ffcc30",
   display: "flex",
   flexDirection: "column",
-  boxShadow: isDark
-    ? "0 2px 12px rgba(0,255,204,0.2)"
-    : "0 2px 12px rgba(0,0,0,0.1)",
-  minHeight: 350,
+  background: isDark ? "#1e1e1e" : "#fff",
+  color: isDark ? "#fff" : "#000",
 });
-
 const imgStyle = {
   width: "100%",
-  height: 150,
+  height: 140,
   objectFit: "cover",
-  borderRadius: 10,
+  borderRadius: 8,
+  marginBottom: 10,
   cursor: "pointer",
-  marginBottom: 10,
 };
-
-const categoryStyle = {
-  fontSize: 14,
-  fontWeight: "600",
-  marginTop: 6,
-  marginBottom: 10,
-  color: "#00ffcc",
-};
-
+const categoryStyle = { fontSize: 14, color: "#00ffcc", margin: "5px 0" };
 const socialRowStyle = {
   display: "flex",
   justifyContent: "space-between",
   alignItems: "center",
-  marginBottom: 10,
+  background: "rgba(255,255,255,0.06)",
+  padding: "8px",
+  borderRadius: 8,
+  marginTop: 10,
 };
-
-const emojiBtnStyle = {
-  marginRight: 12,
-  userSelect: "none",
-};
-
+const emojiBtnStyle = { cursor: "pointer", marginRight: 10, fontSize: 16 };
 const waBtnStyle = {
-  background: "#25D366",
+  backgroundColor: "#25D366",
   color: "#fff",
+  padding: "6px 12px",
   borderRadius: 20,
-  padding: "6px 14px",
   textDecoration: "none",
-  fontWeight: "600",
   fontSize: 14,
+  fontWeight: "500",
 };
-
-const commentStyle = (isDark) => ({
-  width: "100%",
-  padding: 8,
-  borderRadius: 6,
-  border: "1px solid #666",
-  marginTop: 8,
-  background: isDark ? "#222" : "#fff",
-  color: isDark ? "#fff" : "#000",
-  fontSize: 14,
-});
-
+const commentStyle = (isDark) => ({ ...inputStyle(isDark), marginTop: 10 });
 const modalOverlay = {
   position: "fixed",
   top: 0,
   left: 0,
-  width: "100vw",
-  height: "100vh",
-  backgroundColor: "rgba(0,0,0,0.8)",
+  right: 0,
+  bottom: 0,
+  background: "rgba(0,0,0,0.7)",
   display: "flex",
   justifyContent: "center",
   alignItems: "center",
-  zIndex: 1000,
+  zIndex: 10,
 };
-
 const modalContent = {
-  background: "#111",
+  background: "#1e1e1e",
   padding: 20,
-  borderRadius: 12,
-  maxWidth: 600,
-  width: "90%",
+  borderRadius: 10,
+  maxWidth: "90%",
+  maxHeight: "90%",
   color: "#fff",
+  overflowY: "auto",
   textAlign: "center",
-  position: "relative",
 };
-
 const modalImage = {
   width: "100%",
   maxHeight: 300,
   objectFit: "contain",
-  borderRadius: 12,
-  marginBottom: 15,
+  borderRadius: 8,
+  marginBottom: 20,
 };
