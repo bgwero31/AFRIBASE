@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { db } from "../firebase";
 import { ref, push, onValue, update, remove } from "firebase/database";
 
@@ -15,7 +15,10 @@ export default function Marketplace() {
   const [darkMode, setDarkMode] = useState(true);
   const [modal, setModal] = useState(null);
   const [commentInputs, setCommentInputs] = useState({});
-  const [likedProducts, setLikedProducts] = useState({}); // To track likes toggle per user/session
+  const [likedProducts, setLikedProducts] = useState({});
+
+  const pressTimer = useRef(null);
+  const isLongPressActive = useRef(false);
 
   useEffect(() => {
     const productRef = ref(db, "products");
@@ -59,7 +62,6 @@ export default function Marketplace() {
       const data = await res.json();
       if (!data.success) throw new Error("Image upload failed");
       const imageUrl = data.data.url;
-      // Optionally save delete_url if you want to support deletion from imgbb later
       push(ref(db, "products"), {
         title,
         description,
@@ -89,11 +91,9 @@ export default function Marketplace() {
     if (!product) return;
 
     if (liked) {
-      // Remove like
       update(prodRef, { likes: Math.max(product.likes - 1, 0) });
       setLikedProducts((prev) => ({ ...prev, [id]: false }));
     } else {
-      // Add like
       update(prodRef, { likes: product.likes + 1 });
       setLikedProducts((prev) => ({ ...prev, [id]: true }));
     }
@@ -138,17 +138,20 @@ export default function Marketplace() {
     }
   };
 
-  // Long press detection logic
-  let pressTimer = null;
-
+  // Long press detection logic improved:
   const handlePressStart = (id) => {
-    pressTimer = setTimeout(() => {
+    isLongPressActive.current = false;
+    pressTimer.current = setTimeout(() => {
+      isLongPressActive.current = true;
       handleDeleteProduct(id);
-    }, 800); // 800ms long press
+    }, 800);
   };
 
   const handlePressEnd = () => {
-    clearTimeout(pressTimer);
+    if (pressTimer.current) {
+      clearTimeout(pressTimer.current);
+      pressTimer.current = null;
+    }
   };
 
   const filtered = products.filter(
@@ -220,6 +223,7 @@ export default function Marketplace() {
             style={{ ...cardStyle(isDark) }}
             onMouseDown={() => handlePressStart(p.id)}
             onMouseUp={handlePressEnd}
+            onMouseLeave={handlePressEnd}
             onTouchStart={() => handlePressStart(p.id)}
             onTouchEnd={handlePressEnd}
           >
@@ -245,7 +249,7 @@ export default function Marketplace() {
                 </span>
               </div>
               <a
-                href={`https://wa.me/?text=Hi I'm interested in your ${encodeURIComponent(p.title)}`}
+                href={`https://wa.me/?text=${encodeURIComponent("Hi I'm interested in your " + p.title)}`}
                 target="_blank"
                 rel="noopener noreferrer"
                 style={waBtnStyle}
