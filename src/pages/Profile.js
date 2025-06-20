@@ -1,32 +1,153 @@
-import React from "react";
+import React, { useEffect, useState } from "react";
+import { auth, db } from "../firebase";
+import {
+  signInWithEmailAndPassword,
+  signOut,
+  onAuthStateChanged
+} from "firebase/auth";
+import {
+  doc,
+  getDoc,
+  setDoc,
+  updateDoc
+} from "firebase/firestore";
+
+const imgbbKey = "30df4aa05f1af3b3b58ee8a74639e5cf";
 
 const Profile = () => {
+  const [user, setUser] = useState(null);
+  const [profileData, setProfileData] = useState({
+    name: "",
+    image: "",
+    email: "",
+    vip: false,
+    posts: 0,
+    likes: 0,
+    comments: 0,
+  });
+  const [uploading, setUploading] = useState(false);
+  const [signInDetails, setSignInDetails] = useState({ email: "", password: "" });
+
+  useEffect(() => {
+    const unsub = onAuthStateChanged(auth, async (firebaseUser) => {
+      if (firebaseUser) {
+        setUser(firebaseUser);
+        const userRef = doc(db, "users", firebaseUser.uid);
+        const userSnap = await getDoc(userRef);
+        if (userSnap.exists()) {
+          setProfileData(userSnap.data());
+        } else {
+          const defaultProfile = {
+            name: "New User",
+            image: "",
+            email: firebaseUser.email || "",
+            vip: false,
+            posts: 0,
+            likes: 0,
+            comments: 0,
+          };
+          await setDoc(userRef, defaultProfile);
+          setProfileData(defaultProfile);
+        }
+      } else {
+        setUser(null);
+      }
+    });
+
+    return () => unsub();
+  }, []);
+
+  const handleSignIn = async () => {
+    try {
+      await signInWithEmailAndPassword(auth, signInDetails.email, signInDetails.password);
+    } catch (err) {
+      alert("Login failed. Check your credentials.");
+    }
+  };
+
+  const handleSignOut = () => signOut(auth);
+
+  const handleImageUpload = async (e) => {
+    const file = e.target.files[0];
+    if (!file || !user) return;
+    setUploading(true);
+
+    const formData = new FormData();
+    formData.append("image", file);
+
+    const res = await fetch(`https://api.imgbb.com/1/upload?key=${imgbbKey}`, {
+      method: "POST",
+      body: formData,
+    });
+
+    const data = await res.json();
+    const imageUrl = data.data.url;
+
+    await updateDoc(doc(db, "users", user.uid), { image: imageUrl });
+    setProfileData((prev) => ({ ...prev, image: imageUrl }));
+    setUploading(false);
+  };
+
+  const handleNameChange = async () => {
+    const newName = prompt("Enter new name:");
+    if (!newName || !user) return;
+
+    await updateDoc(doc(db, "users", user.uid), { name: newName });
+    setProfileData((prev) => ({ ...prev, name: newName }));
+  };
+
+  if (!user) {
+    return (
+      <div style={container}>
+        <div style={card}>
+          <h2>Sign In</h2>
+          <input
+            type="email"
+            placeholder="Email"
+            value={signInDetails.email}
+            onChange={(e) => setSignInDetails({ ...signInDetails, email: e.target.value })}
+            style={input}
+          />
+          <input
+            type="password"
+            placeholder="Password"
+            value={signInDetails.password}
+            onChange={(e) => setSignInDetails({ ...signInDetails, password: e.target.value })}
+            style={input}
+          />
+          <button style={button} onClick={handleSignIn}>Log In</button>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div style={container}>
       <div style={card}>
-        <div style={avatar}></div>
-
-        <h2 style={name}>B.JAY 🇿🇼</h2>
-        <p style={tagline}>Full Stack Builder | Afribase Creator</p>
-
-        <div style={badge}>🌟 VIP MEMBER</div>
-
-        <div style={stats}>
-          <div>
-            <strong>14</strong>
-            <p>Posts</p>
-          </div>
-          <div>
-            <strong>32</strong>
-            <p>Likes</p>
-          </div>
-          <div>
-            <strong>7</strong>
-            <p>Comments</p>
-          </div>
+        <div style={avatar}>
+          {profileData.image ? (
+            <img src={profileData.image} alt="Profile" style={{ width: "100%", height: "100%", borderRadius: "50%" }} />
+          ) : (
+            <p style={{ fontSize: 30, marginTop: 28 }}>👤</p>
+          )}
         </div>
 
-        <button style={button}>Edit Profile</button>
+        <input type="file" accept="image/*" onChange={handleImageUpload} />
+        {uploading && <p>Uploading image...</p>}
+
+        <h2 style={name}>{profileData.name}</h2>
+        <p style={tagline}>{profileData.email}</p>
+
+        {profileData.vip && <div style={badge}>🌟 VIP MEMBER</div>}
+
+        <div style={stats}>
+          <div><strong>{profileData.posts}</strong><p>Posts</p></div>
+          <div><strong>{profileData.likes}</strong><p>Likes</p></div>
+          <div><strong>{profileData.comments}</strong><p>Comments</p></div>
+        </div>
+
+        <button style={button} onClick={handleNameChange}>Edit Name</button>
+        <button style={{ ...button, background: "#f44336" }} onClick={handleSignOut}>Sign Out</button>
       </div>
     </div>
   );
@@ -58,10 +179,9 @@ const avatar = {
   width: "100px",
   height: "100px",
   borderRadius: "50%",
-  background: "linear-gradient(135deg, #00ffcc, #007766)",
+  background: "#ddd",
   margin: "0 auto 20px",
-  border: "3px solid #fff",
-  boxShadow: "0 0 12px #00ffcc88"
+  overflow: "hidden"
 };
 
 const name = {
@@ -103,5 +223,13 @@ const button = {
   borderRadius: "10px",
   fontWeight: "600",
   cursor: "pointer",
-  transition: "0.3s"
+  marginTop: "10px"
+};
+
+const input = {
+  width: "90%",
+  padding: "10px",
+  borderRadius: "8px",
+  border: "1px solid #ccc",
+  marginBottom: "10px"
 };
