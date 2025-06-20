@@ -25,10 +25,7 @@ export default function Marketplace() {
           ...val,
           likes: val.likes || 0,
           dislikes: val.dislikes || 0,
-          // Convert comments object to array of {id, text} for easier display (optional)
-          comments: val.comments
-            ? Object.entries(val.comments).map(([cid, ctext]) => ({ id: cid, text: ctext }))
-            : []
+          comments: val.comments ? Object.values(val.comments) : []
         }));
         setProducts(items.reverse());
       }
@@ -57,7 +54,6 @@ export default function Marketplace() {
   const handleComment = (id) => {
     const text = commentInputs[id];
     if (!text) return;
-    // Push comment text to products/{id}/comments node in firebase
     push(ref(db, `products/${id}/comments`), text);
     setCommentInputs({ ...commentInputs, [id]: "" });
   };
@@ -86,7 +82,7 @@ export default function Marketplace() {
       </h2>
 
       <input
-        style={{ ...searchInput, background: isDark ? "#1f1f1f" : "#fff", color: isDark ? "#fff" : "#000" }}
+        style={{ ...searchInput, background: isDark? "#1f1f1f":"#fff", color: isDark? "#fff":"#000" }}
         placeholder="🔍 Search products..." value={search} onChange={e => setSearch(e.target.value)}
       />
 
@@ -111,11 +107,12 @@ export default function Marketplace() {
           <div key={p.id} style={{ ...cardStyle(isDark) }}>
             <img src={p.image} style={imgStyle} onClick={() => setModal(p)} />
             <h3>{p.title}</h3>
-            <p style={{ flexGrow: 1 }}>{p.description}</p>
+            <p style={{ flexGrow:1 }}>{p.description}</p>
             <strong style={{ color: "#00ffcc" }}>{p.price}</strong>
             <div style={categoryStyle}>📂 {p.category}</div>
-            <div style={{ fontSize: "12px", color: isDark ? "#aaa" : "#555", marginBottom: "8px" }}>{p.time}</div>
+            <div style={{ fontSize:"12px", color:isDark?"#aaa":"#555", marginBottom:"8px" }}>{p.time}</div>
 
+            {/* Social & contact row */}
             <div style={socialRowStyle}>
               <div>
                 <span onClick={() => handleLike(p.id, 1)} style={emojiBtnStyle}>👍 {p.likes}</span>
@@ -128,36 +125,27 @@ export default function Marketplace() {
               >💬 WhatsApp</a>
             </div>
 
-            {/* Comments Section */}
-            <div>
-              {p.comments.length > 0 && (
-                <div style={{ maxHeight: "80px", overflowY: "auto", marginBottom: 6, fontSize: 13, color: isDark ? "#ccc" : "#444" }}>
-                  {p.comments.map(c => (
-                    <div key={c.id} style={{ borderBottom: "1px solid #444", padding: "2px 0" }}>{c.text}</div>
-                  ))}
-                </div>
-              )}
-              <input
-                style={commentStyle(isDark)}
-                placeholder="💬 Add comment..."
-                value={commentInputs[p.id] || ""}
-                onChange={e => setCommentInputs({ ...commentInputs, [p.id]: e.target.value })}
-              />
-              <button style={buttonStyle} onClick={() => handleComment(p.id)}>Post</button>
-            </div>
+            {/* Comments */}
+            <input
+              style={commentStyle(isDark)}
+              placeholder="💬 Add comment..."
+              value={commentInputs[p.id]||""}
+              onChange={e => setCommentInputs({ ...commentInputs, [p.id]: e.target.value })}
+            />
+            <button style={buttonStyle} onClick={() => handleComment(p.id)}>Post</button>
           </div>
         ))}
       </div>
 
       {modal && (
-        <div style={modalOverlay} onClick={() => setModal(null)}>
+        <div style={modalOverlay} onClick={()=>setModal(null)}>
           <div style={modalContent}>
             <img src={modal.image} style={modalImage} />
             <h2>{modal.title}</h2>
             <p>{modal.description}</p>
             <p>📂 {modal.category}</p>
-            <p style={{ color: "#00ffcc", fontWeight: "bold" }}>{modal.price}</p>
-            <p style={{ fontSize: "12px", color: "#aaa" }}>{modal.time}</p>
+            <p style={{ color:"#00ffcc", fontWeight:"bold" }}>{modal.price}</p>
+            <p style={{ fontSize:"12px", color:"#aaa" }}>{modal.time}</p>
             <a href={`https://wa.me/?text=Hi I'm interested`} style={waBtnStyle}>💬 WhatsApp</a>
           </div>
         </div>
@@ -166,29 +154,29 @@ export default function Marketplace() {
   );
 }
 
-// === Styles
+// Styles & helpers
 const toggleBtnStyle = isDark => ({
-  position: "absolute", top: 20, right: 20, fontSize: 20,
-  background: isDark ? "#00ffcc" : "#121212", color: isDark ? "#000" : "#fff",
-  padding: 10, borderRadius: 50, border: "none", boxShadow: "0 0 10px #00ffcc99", zIndex: 2
+  position: "absolute", top:20, right:20, fontSize:20,
+  background:isDark?"#00ffcc":"#121212", color:isDark?"#000":"#fff",
+  padding:10, borderRadius:50, border:"none", boxShadow:"0 0 10px #00ffcc99", zIndex:2
 });
 
-const pageStyle = { padding: 20, minHeight: "100vh", fontFamily: "Poppins", position: "relative" };
-const headerStyle = { textAlign: "center", margin: "20px 0", fontWeight: "800", display: "flex", justifyContent: "center", flexWrap: "wrap" };
-const letterStyle = { background: "linear-gradient(to top,#00ffcc,#000)", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent", animation: "flickerColor 2s infinite" };
-const searchInput = { width: "100%", maxWidth: 400, display: "block", margin: "0 auto 20px", padding: "10px", border: "none", borderRadius: 8, fontSize: 16 };
-const formStyle = { display: "flex", flexDirection: "column", gap: 10, maxWidth: "100%", padding: "10px", margin: "0 auto 20px", boxSizing: "border-box" };
-const inputStyle = isDark => ({ padding: 12, borderRadius: 8, border: "none", fontSize: 16, background: isDark ? "#1f1f1f" : "#fff", color: isDark ? "#fff" : "#000" });
+const pageStyle = { padding:20, minHeight:"100vh", fontFamily:"Poppins", position:"relative" };
+const headerStyle = { textAlign:"center", margin:"20px 0", fontWeight:"800", display:"flex", justifyContent:"center", flexWrap:"wrap" };
+const letterStyle = { background:"linear-gradient(to top,#00ffcc,#000)", WebkitBackgroundClip:"text", WebkitTextFillColor:"transparent", animation:"flickerColor 2s infinite" };
+const searchInput = { width:"100%", maxWidth:400, display:"block", margin:"0 auto 20px", padding:"10px", border:"none", borderRadius:8, fontSize:16 };
+const formStyle = { display:"flex", flexDirection:"column", gap:10, maxWidth:400, margin:"0 auto 20px" };
+const inputStyle = isDark => ({ padding:12, borderRadius:8, border:"none", fontSize:16, background:isDark?"#1f1f1f":"#fff", color:isDark?"#fff":"#000" });
 const textStyle = inputStyle;
-const buttonStyle = { padding: 10, backgroundColor: "#00ffcc", color: "#000", border: "none", borderRadius: 6, fontSize: 14, cursor: "pointer", marginTop: 5 };
-const productGrid = { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: "14px" };
-const cardStyle = isDark => ({ padding: 12, borderRadius: 10, boxShadow: "0 0 10px #00ffcc30", display: "flex", flexDirection: "column", background: isDark ? "#1e1e1e" : "#fff", color: isDark ? "#fff" : "#000" });
-const imgStyle = { width: "100%", height: "110px", objectFit: "cover", borderRadius: 8, marginBottom: 8, cursor: "pointer" };
-const categoryStyle = { fontSize: 14, color: "#00ffcc", margin: "5px 0" };
-const socialRowStyle = { display: "flex", justifyContent: "space-between", alignItems: "center", background: "rgba(255,255,255,0.06)", padding: "8px", borderRadius: 8, marginTop: 10 };
-const emojiBtnStyle = { cursor: "pointer", marginRight: 10, fontSize: 16 };
-const waBtnStyle = { backgroundColor: "#25D366", color: "#fff", padding: "6px 12px", borderRadius: 20, textDecoration: "none", fontSize: 14, fontWeight: "500" };
-const commentStyle = isDark => ({ ...inputStyle(isDark), marginTop: 10 });
-const modalOverlay = { position: "fixed", top: 0, left: 0, right: 0, bottom: 0, background: "rgba(0,0,0,0.7)", display: "flex", justifyContent: "center", alignItems: "center", zIndex: 10 };
-const modalContent = { background: "#1e1e1e", padding: 20, borderRadius: 10, maxWidth: "90%", maxHeight: "90%", color: "#fff", overflowY: "auto", textAlign: "center" };
-const modalImage = { width: "100%", maxHeight: 300, objectFit: "contain", borderRadius: 8, marginBottom: 20 };
+const buttonStyle = { padding:10, backgroundColor:"#00ffcc", color:"#000", border:"none", borderRadius:6, fontSize:14, cursor:"pointer", marginTop:5 };
+const productGrid = { display:"grid", gridTemplateColumns:"repeat(auto-fill,minmax(170px,1fr))", gap:16 };
+const cardStyle = isDark => ({ padding:12, borderRadius:10, boxShadow:"0 0 10px #00ffcc30", display:"flex", flexDirection:"column", background:isDark?"#1e1e1e":"#fff", color:isDark?"#fff":"#000" });
+const imgStyle = { width:"100%", height:140, objectFit:"cover", borderRadius:8, marginBottom:10, cursor:"pointer" };
+const categoryStyle = { fontSize:14, color:"#00ffcc", margin:"5px 0" };
+const socialRowStyle = { display:"flex", justifyContent:"space-between", alignItems:"center", background:"rgba(255,255,255,0.06)", padding:"8px", borderRadius:8, marginTop:10 };
+const emojiBtnStyle = { cursor:"pointer", marginRight:10, fontSize:16 };
+const waBtnStyle = { backgroundColor:"#25D366", color:"#fff", padding:"6px 12px", borderRadius:20, textDecoration:"none", fontSize:14, fontWeight:"500" };
+const commentStyle = isDark => ({ ...inputStyle(isDark), marginTop:10 });
+const modalOverlay = { position:"fixed", top:0,left:0,right:0,bottom:0, background:"rgba(0,0,0,0.7)", display:"flex", justifyContent:"center", alignItems:"center", zIndex:10 };
+const modalContent = { background:"#1e1e1e", padding:20, borderRadius:10, maxWidth:"90%", maxHeight:"90%", color:"#fff", overflowY:"auto", textAlign:"center" };
+const modalImage = { width:"100%", maxHeight:300, objectFit:"contain", borderRadius:8, marginBottom:20 };
