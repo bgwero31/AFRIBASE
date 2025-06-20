@@ -8,6 +8,7 @@ export default function Marketplace() {
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [price, setPrice] = useState("");
+  const [category, setCategory] = useState("");
   const [image, setImage] = useState(null);
 
   useEffect(() => {
@@ -22,7 +23,9 @@ export default function Marketplace() {
   }, []);
 
   const handlePost = async () => {
-    if (!title || !description || !price || !image) return alert("Please fill in all fields.");
+    if (!title || !description || !price || !category || !image) {
+      return alert("Please fill in all fields.");
+    }
 
     const imgRef = storageRef(storage, `marketplace/${Date.now()}-${image.name}`);
     await uploadBytes(imgRef, image);
@@ -32,6 +35,7 @@ export default function Marketplace() {
       title,
       description,
       price,
+      category,
       image: imageUrl,
       time: new Date().toLocaleString()
     });
@@ -39,6 +43,7 @@ export default function Marketplace() {
     setTitle("");
     setDescription("");
     setPrice("");
+    setCategory("");
     setImage(null);
     alert("Product posted!");
   };
@@ -51,6 +56,14 @@ export default function Marketplace() {
         <input style={inputStyle} placeholder="Product Title" value={title} onChange={(e) => setTitle(e.target.value)} />
         <textarea style={textareaStyle} placeholder="Description" value={description} onChange={(e) => setDescription(e.target.value)} />
         <input style={inputStyle} placeholder="Price (e.g. $25)" value={price} onChange={(e) => setPrice(e.target.value)} />
+        <select style={inputStyle} value={category} onChange={(e) => setCategory(e.target.value)}>
+          <option value="">Select Category</option>
+          <option value="Electronics">📱 Electronics</option>
+          <option value="Clothing">👗 Clothing</option>
+          <option value="Food">🍲 Food</option>
+          <option value="Vehicles">🚗 Vehicles</option>
+          <option value="Other">🔧 Other</option>
+        </select>
         <input type="file" accept="image/*" onChange={(e) => setImage(e.target.files[0])} />
         <button style={buttonStyle} onClick={handlePost}>📤 Post Product</button>
       </div>
@@ -62,7 +75,9 @@ export default function Marketplace() {
             <h3>{p.title}</h3>
             <p>{p.description}</p>
             <strong style={{ color: "#00ffcc" }}>{p.price}</strong>
+            <div style={categoryStyle}>📂 {p.category}</div>
             <div style={{ fontSize: "12px", color: "#aaa", marginTop: "5px" }}>{p.time}</div>
+            <button style={contactBtn}>📞 Contact Seller</button>
           </div>
         ))}
       </div>
@@ -134,4 +149,21 @@ const imgStyle = {
   objectFit: "cover",
   borderRadius: "6px",
   marginBottom: "10px"
+};
+
+const contactBtn = {
+  marginTop: "10px",
+  padding: "8px",
+  backgroundColor: "#00ffcc",
+  color: "#000",
+  border: "none",
+  borderRadius: "6px",
+  cursor: "pointer",
+  fontWeight: "600"
+};
+
+const categoryStyle = {
+  marginTop: "8px",
+  fontSize: "14px",
+  color: "#00ffcc"
 };
