@@ -1,5 +1,11 @@
 import React, { useEffect, useState } from "react";
-import { getAuth, signInWithEmailAndPassword, signOut, onAuthStateChanged } from "firebase/auth";
+import {
+  getAuth,
+  createUserWithEmailAndPassword,
+  signInWithEmailAndPassword,
+  signOut,
+  onAuthStateChanged
+} from "firebase/auth";
 import { ref, set, get, child, update } from "firebase/database";
 import { db } from "../firebase";
 
@@ -17,7 +23,7 @@ export default function Profile() {
     likes: 0,
     comments: 0,
   });
-  const [loginForm, setLoginForm] = useState({ email: "", password: "" });
+  const [form, setForm] = useState({ email: "", password: "" });
   const [uploading, setUploading] = useState(false);
 
   useEffect(() => {
@@ -44,15 +50,32 @@ export default function Profile() {
         setUser(null);
       }
     });
-
     return () => unsub();
   }, []);
 
   const handleLogin = async () => {
     try {
-      await signInWithEmailAndPassword(auth, loginForm.email, loginForm.password);
+      await signInWithEmailAndPassword(auth, form.email, form.password);
     } catch (err) {
       alert("Login failed: " + err.message);
+    }
+  };
+
+  const handleSignup = async () => {
+    try {
+      const res = await createUserWithEmailAndPassword(auth, form.email, form.password);
+      const defaultData = {
+        name: "New User",
+        email: res.user.email,
+        image: "",
+        vip: false,
+        posts: 0,
+        likes: 0,
+        comments: 0,
+      };
+      await set(ref(db, `users/${res.user.uid}`), defaultData);
+    } catch (err) {
+      alert("Signup failed: " + err.message);
     }
   };
 
@@ -61,8 +84,8 @@ export default function Profile() {
   const handleImageUpload = async (e) => {
     const file = e.target.files[0];
     if (!file || !user) return;
-
     setUploading(true);
+
     const formData = new FormData();
     formData.append("image", file);
 
@@ -70,7 +93,6 @@ export default function Profile() {
       method: "POST",
       body: formData,
     });
-
     const data = await res.json();
     const imageUrl = data.data.url;
 
@@ -90,22 +112,23 @@ export default function Profile() {
     return (
       <div style={container}>
         <div style={card}>
-          <h2>Sign In</h2>
+          <h2>Welcome to Afribase</h2>
           <input
             type="email"
             placeholder="Email"
-            value={loginForm.email}
-            onChange={(e) => setLoginForm({ ...loginForm, email: e.target.value })}
+            value={form.email}
+            onChange={(e) => setForm({ ...form, email: e.target.value })}
             style={input}
           />
           <input
             type="password"
             placeholder="Password"
-            value={loginForm.password}
-            onChange={(e) => setLoginForm({ ...loginForm, password: e.target.value })}
+            value={form.password}
+            onChange={(e) => setForm({ ...form, password: e.target.value })}
             style={input}
           />
-          <button style={button} onClick={handleLogin}>Log In</button>
+          <button style={button} onClick={handleLogin}>Sign In</button>
+          <button style={{ ...button, background: "#0077cc" }} onClick={handleSignup}>Sign Up</button>
         </div>
       </div>
     );
@@ -121,7 +144,6 @@ export default function Profile() {
             <p style={{ fontSize: 30, marginTop: 28 }}>👤</p>
           )}
         </div>
-
         <input type="file" accept="image/*" onChange={handleImageUpload} />
         {uploading && <p>Uploading...</p>}
 
