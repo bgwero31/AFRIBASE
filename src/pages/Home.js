@@ -11,28 +11,45 @@ export default function Home() {
         0% { background-position: 0% 100%; }
         100% { background-position: 0% 0%; }
       }
+      @keyframes fadeInUp {
+        from { opacity: 0; transform: translateY(20px); }
+        to { opacity: 1; transform: translateY(0); }
+      }
     `;
     document.head.appendChild(style);
   }, []);
 
   const toggleDarkMode = () => setDarkMode(!darkMode);
 
-  const bgStyle = darkMode
-    ? "linear-gradient(145deg, #1f1f1f, #0f0f0f)"
-    : "linear-gradient(145deg, #f0f0f0, #ffffff)";
+  const bgStyle = {
+    backgroundImage: `url('/african-pattern.png'), ${
+      darkMode
+        ? "linear-gradient(145deg, #1f1f1f, #0f0f0f)"
+        : "linear-gradient(145deg, #f0f0f0, #ffffff)"
+    }`,
+    backgroundSize: "cover, 100%",
+    backgroundRepeat: "repeat, no-repeat",
+  };
+
   const textColor = darkMode ? "#fff" : "#111";
 
   return (
-    <div style={{ ...containerStyle, background: bgStyle, color: textColor }}>
+    <div style={{ ...containerStyle, ...bgStyle, color: textColor }}>
       {/* Toggle Button */}
       <button onClick={toggleDarkMode} style={toggleBtnStyle}>
-        {darkMode ? "🌙" : "☀️"}
+        {darkMode ? "🌑" : "☀️"}
       </button>
 
       {/* Header */}
       <header style={headerStyle}>
-        <h1 style={titleStyle}>AFRIBASE</h1>
-        <p style={subTitleStyle}>Your All-in-One African SuperApp</p>
+        <h1 style={titleStyle}>
+          {["A", "F", "R", "I", "B", "A", "S", "E"].map((char, i) => (
+            <span key={i} style={{ color: ["#e60000", "#ffcc00", "#00cc00", "#000"][i % 4] }}>
+              {char}
+            </span>
+          ))}
+        </h1>
+        <p style={subTitleStyle}>🎶 Your All-in-One African SuperApp 🪘</p>
       </header>
 
       {/* Navigation Buttons */}
@@ -41,6 +58,11 @@ export default function Home() {
         <Link to="/market" style={button3D}>🛍️ Marketplace</Link>
         <Link to="/profile" style={button3D}>👤 My Profile</Link>
       </main>
+
+      {/* African Proverb */}
+      <p style={quoteStyle}>
+        “If you want to go fast, go alone. If you want to go far, go together.” – African Proverb
+      </p>
 
       {/* Footer */}
       <footer style={footerStyle}>
@@ -110,11 +132,21 @@ const button3D = {
   fontWeight: "600",
   borderRadius: "12px",
   border: "none",
-  background: "linear-gradient(145deg, #00ffcc, #00c2a6)",
-  boxShadow: "0 8px 18px #00ffcc50",
-  color: "#000",
+  background: "linear-gradient(145deg, #ffb300, #ff5722)",
+  boxShadow: "0 8px 18px rgba(255, 87, 34, 0.4)",
+  color: "#fff",
   textDecoration: "none",
-  transition: "all 0.3s ease-in-out"
+  transition: "transform 0.3s ease-in-out",
+  animation: "fadeInUp 0.6s ease-in-out"
+};
+
+const quoteStyle = {
+  fontStyle: "italic",
+  marginTop: "40px",
+  maxWidth: "400px",
+  textAlign: "center",
+  color: "#ccc",
+  lineHeight: 1.6
 };
 
 const footerStyle = {
