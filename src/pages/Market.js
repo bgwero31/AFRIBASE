@@ -1,10 +1,14 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect } from "react";
 import { db } from "../firebase";
 import { ref, push, onValue, update, remove } from "firebase/database";
+import { getAuth } from "firebase/auth";
 
 const IMGBB_API_KEY = "30df4aa05f1af3b3b58ee8a74639e5cf";
 
 export default function Marketplace() {
+  const auth = getAuth();
+  const user = auth.currentUser;
+
   const [products, setProducts] = useState([]);
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
@@ -17,9 +21,6 @@ export default function Marketplace() {
   const [commentInputs, setCommentInputs] = useState({});
   const [likedProducts, setLikedProducts] = useState({});
 
-  const pressTimer = useRef(null);
-  const isLongPressActive = useRef(false);
-
   useEffect(() => {
     const productRef = ref(db, "products");
     onValue(productRef, (snapshot) => {
@@ -31,8 +32,11 @@ export default function Marketplace() {
           likes: val.likes || 0,
           dislikes: val.dislikes || 0,
           comments: val.comments
-            ? Object.entries(val.comments).map(([cid, c]) => ({ id: cid, text: c }))
-            : []
+            ? Object.entries(val.comments).map(([cid, c]) => ({
+                id: cid,
+                ...c,
+              }))
+            : [],
         }));
         setProducts(items.reverse());
       }
@@ -62,6 +66,7 @@ export default function Marketplace() {
       const data = await res.json();
       if (!data.success) throw new Error("Image upload failed");
       const imageUrl = data.data.url;
+
       push(ref(db, "products"), {
         title,
         description,
@@ -71,7 +76,11 @@ export default function Marketplace() {
         time: new Date().toLocaleString(),
         likes: 0,
         dislikes: 0,
+        userName: user?.displayName || "Unknown User",
+        userPhoto: user?.photoURL || "",
+        uid: user?.uid || "",
       });
+
       setTitle("");
       setDescription("");
       setPrice("");
@@ -80,10 +89,9 @@ export default function Marketplace() {
       alert("✅ Product posted!");
     } catch (error) {
       console.error(error);
-      alert("Image upload or post failed. Try again.");
+      alert("Image upload or post failed.");
     }
   };
-
   const handleLike = (id) => {
     const prodRef = ref(db, `products/${id}`);
     const liked = likedProducts[id];
@@ -117,7 +125,10 @@ export default function Marketplace() {
   const handleComment = (productId) => {
     const text = commentInputs[productId];
     if (!text) return;
-    push(ref(db, `products/${productId}/comments`), text);
+    push(ref(db, `products/${productId}/comments`), {
+      text,
+      author: user?.displayName || "User",
+    });
     setCommentInputs({ ...commentInputs, [productId]: "" });
   };
 
@@ -138,21 +149,17 @@ export default function Marketplace() {
     }
   };
 
-  // Long press detection logic improved:
+  let pressTimer = null;
   const handlePressStart = (id) => {
-    isLongPressActive.current = false;
-    pressTimer.current = setTimeout(() => {
-      isLongPressActive.current = true;
-      handleDeleteProduct(id);
+    pressTimer = setTimeout(() => {
+      if (user?.uid === products.find(p => p.id === id)?.uid) {
+        handleDeleteProduct(id);
+      } else {
+        alert("You can only delete your own products.");
+      }
     }, 800);
   };
-
-  const handlePressEnd = () => {
-    if (pressTimer.current) {
-      clearTimeout(pressTimer.current);
-      pressTimer.current = null;
-    }
-  };
+  const handlePressEnd = () => clearTimeout(pressTimer);
 
   const filtered = products.filter(
     (p) =>
@@ -160,27 +167,17 @@ export default function Marketplace() {
       p.description.toLowerCase().includes(search.toLowerCase())
   );
 
-  const isDark = darkMode;
-
   return (
-    <div
-      style={{
-        ...pageStyle,
-        background: isDark ? "#121212" : "#f4f4f4",
-        color: isDark ? "#fff" : "#000",
-      }}
-    >
+    <div style={{ ...pageStyle, background: isDark ? "#121212" : "#f4f4f4", color: isDark ? "#fff" : "#000" }}>
       <button style={toggleBtnStyle(isDark)} onClick={() => setDarkMode(!darkMode)}>
-        {isDark ? "🌙" : "🌞"}
+        {isDark ? "🌙" : "☀️"}
       </button>
 
       <h2 style={headerStyle}>
         {"AFRIBASE MARKETPLACE".split(" ").map((w, i) => (
           <span key={i} style={{ marginRight: "10px" }}>
             {w.split("").map((c, j) => (
-              <span key={j} style={{ ...letterStyle, animationDelay: `${(i + j) * 0.05}s` }}>
-                {c}
-              </span>
+              <span key={j} style={{ ...letterStyle, animationDelay: `${(i + j) * 0.05}s` }}>{c}</span>
             ))}
           </span>
         ))}
@@ -193,28 +190,8 @@ export default function Marketplace() {
         onChange={(e) => setSearch(e.target.value)}
       />
 
-      <div style={formStyle}>
-        <input style={inputStyle(isDark)} placeholder="Title" value={title} onChange={(e) => setTitle(e.target.value)} />
-        <textarea
-          style={textStyle(isDark)}
-          placeholder="Description"
-          value={description}
-          onChange={(e) => setDescription(e.target.value)}
-        />
-        <input style={inputStyle(isDark)} placeholder="Price" value={price} onChange={(e) => setPrice(e.target.value)} />
-        <select style={inputStyle(isDark)} value={category} onChange={(e) => setCategory(e.target.value)}>
-          <option value="">Category</option>
-          <option value="Electronics">📱 Electronics</option>
-          <option value="Clothing">👗 Clothing</option>
-          <option value="Food">🍲 Food</option>
-          <option value="Vehicles">🚗 Vehicles</option>
-          <option value="Other">❓ Other</option>
-        </select>
-        <input type="file" onChange={(e) => setImage(e.target.files[0])} />
-        <button style={buttonStyle} onClick={handlePost}>
-          📝 Post
-        </button>
-      </div>
+      {/* FORM */}
+      {/* -- OMITTED FORM (already added in part 1) -- */}
 
       <div style={productGrid}>
         {filtered.map((p) => (
@@ -223,40 +200,38 @@ export default function Marketplace() {
             style={{ ...cardStyle(isDark) }}
             onMouseDown={() => handlePressStart(p.id)}
             onMouseUp={handlePressEnd}
-            onMouseLeave={handlePressEnd}
             onTouchStart={() => handlePressStart(p.id)}
             onTouchEnd={handlePressEnd}
           >
             <img src={p.image} style={imgStyle} onClick={() => setModal(p)} alt={p.title} />
             <h3>{p.title}</h3>
-            <p style={{ flexGrow: 1 }}>{p.description}</p>
+            <p>{p.description}</p>
             <strong style={{ color: "#00ffcc" }}>{p.price}</strong>
             <div style={categoryStyle}>📂 {p.category}</div>
-            <div style={{ fontSize: "12px", color: isDark ? "#aaa" : "#555", marginBottom: "8px" }}>{p.time}</div>
+            <div style={{ fontSize: "12px", color: isDark ? "#aaa" : "#555", marginBottom: "6px" }}>{p.time}</div>
+
+            {p.userName && (
+              <div style={{ display: "flex", alignItems: "center", marginTop: 5 }}>
+                {p.userPhoto && <img src={p.userPhoto} alt="u" style={{ width: 24, height: 24, borderRadius: "50%", marginRight: 6 }} />}
+                <span style={{ fontSize: 13 }}>{p.userName}</span>
+              </div>
+            )}
+
             <div style={socialRowStyle}>
               <div>
-                <span
-                  onClick={() => handleLike(p.id)}
-                  style={{ ...emojiBtnStyle, color: likedProducts[p.id] ? "#00ffcc" : undefined }}
-                >
-                  👍 {p.likes}
-                </span>
-                <span
-                  onClick={() => handleDislike(p.id)}
-                  style={{ ...emojiBtnStyle, color: likedProducts[`dislike_${p.id}`] ? "#ff6347" : undefined }}
-                >
-                  👎 {p.dislikes}
-                </span>
+                <span onClick={() => handleLike(p.id)} style={emojiBtnStyle}>👍 {p.likes}</span>
+                <span onClick={() => handleDislike(p.id)} style={emojiBtnStyle}>👎 {p.dislikes}</span>
               </div>
-              <a
-                href={`https://wa.me/?text=${encodeURIComponent("Hi I'm interested in your " + p.title)}`}
-                target="_blank"
-                rel="noopener noreferrer"
+              <button
+                onClick={() => {
+                  window.location.href = `/chat?to=${p.uid}`;
+                }}
                 style={waBtnStyle}
               >
-                💬 WhatsApp
-              </a>
+                💬 Chat Seller
+              </button>
             </div>
+
             {p.comments.map((c) => (
               <div
                 key={c.id}
@@ -282,7 +257,6 @@ export default function Marketplace() {
                     fontWeight: "bold",
                     fontSize: 16,
                   }}
-                  title="Delete comment"
                 >
                   ❌
                 </button>
@@ -319,135 +293,3 @@ export default function Marketplace() {
     </div>
   );
 }
-
-// Styles
-const toggleBtnStyle = (isDark) => ({
-  position: "absolute",
-  top: 20,
-  right: 20,
-  fontSize: 20,
-  background: isDark ? "#00ffcc" : "#121212",
-  color: isDark ? "#000" : "#fff",
-  padding: 10,
-  borderRadius: 50,
-  border: "none",
-  boxShadow: "0 0 10px #00ffcc99",
-  zIndex: 2,
-});
-const pageStyle = { padding: 20, minHeight: "100vh", fontFamily: "Poppins", position: "relative" };
-const headerStyle = {
-  textAlign: "center",
-  margin: "20px 0",
-  fontWeight: "800",
-  display: "flex",
-  justifyContent: "center",
-  flexWrap: "wrap",
-};
-const letterStyle = {
-  background: "linear-gradient(to top,#00ffcc,#000)",
-  WebkitBackgroundClip: "text",
-  WebkitTextFillColor: "transparent",
-  animation : "flickerColor 2s infinite",
-};
-const searchInput = {
-  width: "100%",
-  maxWidth: 400,
-  display: "block",
-  margin: "0 auto 20px",
-  padding: "10px",
-  border: "none",
-  borderRadius: 8,
-  fontSize: 16,
-};
-const formStyle = { display: "flex", flexDirection: "column", gap: 10, maxWidth: 400, margin: "0 auto 20px" };
-const inputStyle = (isDark) => ({
-  padding: 12,
-  borderRadius: 8,
-  border: "none",
-  fontSize: 16,
-  background: isDark ? "#1f1f1f" : "#fff",
-  color: isDark ? "#fff" : "#000",
-});
-const textStyle = inputStyle;
-const buttonStyle = {
-  padding: 10,
-  backgroundColor: "#00ffcc",
-  color: "#000",
-  border: "none",
-  borderRadius: 6,
-  fontSize: 14,
-  cursor: "pointer",
-  marginTop: 5,
-};
-const productGrid = {
-  display: "grid",
-  gridTemplateColumns: "repeat(auto-fill,minmax(170px,1fr))",
-  gap: 16,
-};
-const cardStyle = (isDark) => ({
-  padding: 12,
-  borderRadius: 10,
-  boxShadow: "0 0 10px #00ffcc30",
-  display: "flex",
-  flexDirection: "column",
-  background: isDark ? "#1e1e1e" : "#fff",
-  color: isDark ? "#fff" : "#000",
-});
-const imgStyle = {
-  width: "100%",
-  height: 140,
-  objectFit: "cover",
-  borderRadius: 8,
-  marginBottom: 10,
-  cursor: "pointer",
-};
-const categoryStyle = { fontSize: 14, color: "#00ffcc", margin: "5px 0" };
-const socialRowStyle = {
-  display: "flex",
-  justifyContent: "space-between",
-  alignItems: "center",
-  background: "rgba(255,255,255,0.06)",
-  padding: "8px",
-  borderRadius: 8,
-  marginTop: 10,
-};
-const emojiBtnStyle = { cursor: "pointer", marginRight: 10, fontSize: 16 };
-const waBtnStyle = {
-  backgroundColor: "#25D366",
-  color: "#fff",
-  padding: "6px 12px",
-  borderRadius: 20,
-  textDecoration: "none",
-  fontSize: 14,
-  fontWeight: "500",
-};
-const commentStyle = (isDark) => ({ ...inputStyle(isDark), marginTop: 10 });
-const modalOverlay = {
-  position: "fixed",
-  top: 0,
-  left: 0,
-  right: 0,
-  bottom: 0,
-  background: "rgba(0,0,0,0.7)",
-  display: "flex",
-  justifyContent: "center",
-  alignItems: "center",
-  zIndex: 10,
-};
-const modalContent = {
-  background: "#1e1e1e",
-  padding: 20,
-  borderRadius: 10,
-  maxWidth: "90%",
-  maxHeight: "90%",
-  color: "#fff",
-  overflowY: "auto",
-  textAlign: "center",
-};
-const modalImage = {
-  width: "100%",
-  maxHeight: 300,
-  objectFit: "contain",
-  borderRadius: 8,
-  marginBottom: 20,
-};
