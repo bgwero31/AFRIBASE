@@ -1,53 +1,44 @@
 import React, { useEffect, useState } from "react";
-import { auth, db } from "../firebase";
-import {
-  signInWithEmailAndPassword,
-  signOut,
-  onAuthStateChanged
-} from "firebase/auth";
-import {
-  doc,
-  getDoc,
-  setDoc,
-  updateDoc
-} from "firebase/firestore";
+import { getAuth, signInWithEmailAndPassword, signOut, onAuthStateChanged } from "firebase/auth";
+import { ref, set, get, child, update } from "firebase/database";
+import { db } from "../firebase";
 
+const auth = getAuth();
 const imgbbKey = "30df4aa05f1af3b3b58ee8a74639e5cf";
 
-const Profile = () => {
+export default function Profile() {
   const [user, setUser] = useState(null);
   const [profileData, setProfileData] = useState({
     name: "",
-    image: "",
     email: "",
+    image: "",
     vip: false,
     posts: 0,
     likes: 0,
     comments: 0,
   });
+  const [loginForm, setLoginForm] = useState({ email: "", password: "" });
   const [uploading, setUploading] = useState(false);
-  const [signInDetails, setSignInDetails] = useState({ email: "", password: "" });
 
   useEffect(() => {
-    const unsub = onAuthStateChanged(auth, async (firebaseUser) => {
-      if (firebaseUser) {
-        setUser(firebaseUser);
-        const userRef = doc(db, "users", firebaseUser.uid);
-        const userSnap = await getDoc(userRef);
-        if (userSnap.exists()) {
-          setProfileData(userSnap.data());
+    const unsub = onAuthStateChanged(auth, async (u) => {
+      if (u) {
+        setUser(u);
+        const snapshot = await get(child(ref(db), `users/${u.uid}`));
+        if (snapshot.exists()) {
+          setProfileData(snapshot.val());
         } else {
-          const defaultProfile = {
+          const defaultData = {
             name: "New User",
+            email: u.email,
             image: "",
-            email: firebaseUser.email || "",
             vip: false,
             posts: 0,
             likes: 0,
             comments: 0,
           };
-          await setDoc(userRef, defaultProfile);
-          setProfileData(defaultProfile);
+          await set(ref(db, `users/${u.uid}`), defaultData);
+          setProfileData(defaultData);
         }
       } else {
         setUser(null);
@@ -57,21 +48,21 @@ const Profile = () => {
     return () => unsub();
   }, []);
 
-  const handleSignIn = async () => {
+  const handleLogin = async () => {
     try {
-      await signInWithEmailAndPassword(auth, signInDetails.email, signInDetails.password);
+      await signInWithEmailAndPassword(auth, loginForm.email, loginForm.password);
     } catch (err) {
-      alert("Login failed. Check your credentials.");
+      alert("Login failed: " + err.message);
     }
   };
 
-  const handleSignOut = () => signOut(auth);
+  const handleLogout = () => signOut(auth);
 
   const handleImageUpload = async (e) => {
     const file = e.target.files[0];
     if (!file || !user) return;
-    setUploading(true);
 
+    setUploading(true);
     const formData = new FormData();
     formData.append("image", file);
 
@@ -83,16 +74,15 @@ const Profile = () => {
     const data = await res.json();
     const imageUrl = data.data.url;
 
-    await updateDoc(doc(db, "users", user.uid), { image: imageUrl });
+    await update(ref(db, `users/${user.uid}`), { image: imageUrl });
     setProfileData((prev) => ({ ...prev, image: imageUrl }));
     setUploading(false);
   };
 
   const handleNameChange = async () => {
-    const newName = prompt("Enter new name:");
+    const newName = prompt("Enter your name:");
     if (!newName || !user) return;
-
-    await updateDoc(doc(db, "users", user.uid), { name: newName });
+    await update(ref(db, `users/${user.uid}`), { name: newName });
     setProfileData((prev) => ({ ...prev, name: newName }));
   };
 
@@ -104,18 +94,18 @@ const Profile = () => {
           <input
             type="email"
             placeholder="Email"
-            value={signInDetails.email}
-            onChange={(e) => setSignInDetails({ ...signInDetails, email: e.target.value })}
+            value={loginForm.email}
+            onChange={(e) => setLoginForm({ ...loginForm, email: e.target.value })}
             style={input}
           />
           <input
             type="password"
             placeholder="Password"
-            value={signInDetails.password}
-            onChange={(e) => setSignInDetails({ ...signInDetails, password: e.target.value })}
+            value={loginForm.password}
+            onChange={(e) => setLoginForm({ ...loginForm, password: e.target.value })}
             style={input}
           />
-          <button style={button} onClick={handleSignIn}>Log In</button>
+          <button style={button} onClick={handleLogin}>Log In</button>
         </div>
       </div>
     );
@@ -133,12 +123,12 @@ const Profile = () => {
         </div>
 
         <input type="file" accept="image/*" onChange={handleImageUpload} />
-        {uploading && <p>Uploading image...</p>}
+        {uploading && <p>Uploading...</p>}
 
         <h2 style={name}>{profileData.name}</h2>
         <p style={tagline}>{profileData.email}</p>
 
-        {profileData.vip && <div style={badge}>🌟 VIP MEMBER</div>}
+        {profileData.vip && <div style={badge}>🌟 VIP</div>}
 
         <div style={stats}>
           <div><strong>{profileData.posts}</strong><p>Posts</p></div>
@@ -147,13 +137,11 @@ const Profile = () => {
         </div>
 
         <button style={button} onClick={handleNameChange}>Edit Name</button>
-        <button style={{ ...button, background: "#f44336" }} onClick={handleSignOut}>Sign Out</button>
+        <button style={{ ...button, background: "#f44336" }} onClick={handleLogout}>Sign Out</button>
       </div>
     </div>
   );
-};
-
-export default Profile;
+}
 
 // Styles
 const container = {
