@@ -16,7 +16,19 @@
     
     <!-- Theme color for some mobile browsers -->
     <meta name="theme-color" content="#00ffcc" />
+
+    <!-- Animation style for AFRIBASE MARKETPLACE letters -->
+    <style>
+      @keyframes flickerColor {
+        0%   { filter: brightness(1); }
+        25%  { filter: brightness(0.6); }
+        50%  { filter: brightness(1.4); }
+        75%  { filter: brightness(0.5); }
+        100% { filter: brightness(1); }
+      }
+    </style>
   </head>
+
   <body style="margin: 0; background: #121212;">
     <div id="root"></div>
   </body>
