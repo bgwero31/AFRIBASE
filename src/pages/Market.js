@@ -11,6 +11,7 @@ export default function Marketplace() {
   const [category, setCategory] = useState("");
   const [image, setImage] = useState(null);
   const [search, setSearch] = useState("");
+  const [darkMode, setDarkMode] = useState(true);
 
   useEffect(() => {
     const productRef = ref(db, "products");
@@ -55,8 +56,28 @@ export default function Marketplace() {
     p.category.toLowerCase().includes(search.toLowerCase())
   );
 
+  const isDark = darkMode;
+
+  const toggleIcon = {
+    position: "absolute",
+    top: 20,
+    right: 20,
+    fontSize: "20px",
+    cursor: "pointer",
+    backgroundColor: isDark ? "#00ffcc" : "#121212",
+    color: isDark ? "#000" : "#fff",
+    padding: "10px",
+    borderRadius: "50%",
+    border: "none",
+    boxShadow: "0 0 10px #00ffcc99"
+  };
+
   return (
-    <div style={pageStyle}>
+    <div style={{ ...pageStyle, background: isDark ? "#121212" : "#f4f4f4", color: isDark ? "#fff" : "#000" }}>
+      <button style={toggleIcon} onClick={() => setDarkMode(!darkMode)}>
+        {darkMode ? "☀️" : "🌙"}
+      </button>
+
       <h2 style={headerStyle}>
         {"AFRIBASE MARKETPLACE".split("").map((char, i) => (
           <span key={i} style={{ ...letterStyle, animationDelay: `${i * 0.1}s` }}>
@@ -66,7 +87,7 @@ export default function Marketplace() {
       </h2>
 
       <input
-        style={searchInput}
+        style={{ ...searchInput, backgroundColor: isDark ? "#1f1f1f" : "#fff", color: isDark ? "#fff" : "#000" }}
         placeholder="🔍 Search products..."
         value={search}
         onChange={(e) => setSearch(e.target.value)}
@@ -90,13 +111,13 @@ export default function Marketplace() {
 
       <div style={productGrid}>
         {filteredProducts.map((p, i) => (
-          <div key={i} style={cardStyle}>
+          <div key={i} style={{ ...cardStyle, backgroundColor: isDark ? "#1e1e1e" : "#fff", color: isDark ? "#fff" : "#000" }}>
             <img src={p.image} alt="product" style={imgStyle} />
             <h3>{p.title}</h3>
             <p>{p.description}</p>
             <strong style={{ color: "#00ffcc" }}>{p.price}</strong>
             <div style={categoryStyle}>📂 {p.category}</div>
-            <div style={{ fontSize: "12px", color: "#aaa", marginTop: "5px" }}>{p.time}</div>
+            <div style={{ fontSize: "12px", color: isDark ? "#aaa" : "#555", marginTop: "5px" }}>{p.time}</div>
             <button style={contactBtn}>📞 Contact Seller</button>
           </div>
         ))}
@@ -108,10 +129,9 @@ export default function Marketplace() {
 // === Styles ===
 const pageStyle = {
   padding: "20px",
-  background: "#121212",
-  color: "#fff",
   minHeight: "100vh",
-  fontFamily: "Poppins, sans-serif"
+  fontFamily: "Poppins, sans-serif",
+  position: "relative"
 };
 
 const headerStyle = {
@@ -187,7 +207,6 @@ const productGrid = {
 };
 
 const cardStyle = {
-  backgroundColor: "#1e1e1e",
   padding: "15px",
   borderRadius: "12px",
   boxShadow: "0 0 10px #00ffcc30",
