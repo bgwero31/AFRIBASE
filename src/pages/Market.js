@@ -18,7 +18,7 @@ export default function Marketplace() {
   const [category, setCategory] = useState("");
   const [image, setImage] = useState(null);
   const [search, setSearch] = useState("");
-  const [darkMode, setDarkMode] = useState(false); // ✅ Light mode by default
+  const [darkMode, setDarkMode] = useState(false); // ✅ Light by default
   const [modal, setModal] = useState(null);
   const [commentInputs, setCommentInputs] = useState({});
 
@@ -117,29 +117,41 @@ export default function Marketplace() {
       background: isDark ? "#121212" : "#f4f4f4",
       color: isDark ? "#fff" : "#000",
       minHeight: "100vh",
-      fontFamily: "Poppins"
+      fontFamily: "Poppins, sans-serif"
     }}>
       <button onClick={() => setDarkMode(!darkMode)} style={{
         float: "right", padding: 10, borderRadius: 20,
         background: isDark ? "#00ffcc" : "#121212",
         color: isDark ? "#000" : "#fff", border: "none"
       }}>
-        {isDark ? "☀️" : "🌙"}
+        {isDark ? "🌞" : "🌙"}
       </button>
 
       <h2 style={{
         textAlign: "center",
         marginBottom: 20,
-        fontWeight: "bold",
-        background: "linear-gradient(to right, green, black)",
-        WebkitBackgroundClip: "text",
-        WebkitTextFillColor: "transparent"
+        fontWeight: "900",
+        fontSize: 26,
+        display: "flex",
+        justifyContent: "center",
+        flexWrap: "wrap"
       }}>
-        AFRIBASE MARKETPLACE
+        {"AFRIBASE MARKETPLACE".split("").map((char, i) => (
+          <span key={i} style={{
+            margin: "0 2px",
+            background: `linear-gradient(to right, #00ff00, #000)`,
+            WebkitBackgroundClip: "text",
+            WebkitTextFillColor: "transparent",
+            animation: `fadeIn 1.5s ease-in-out ${i * 0.08}s forwards`,
+            opacity: 0
+          }}>
+            {char}
+          </span>
+        ))}
       </h2>
 
       <input
-        placeholder="🔍 Search products..."
+        placeholder="🔎 Search products..."
         value={search}
         onChange={(e) => setSearch(e.target.value)}
         style={{
@@ -179,32 +191,32 @@ export default function Marketplace() {
             borderRadius: 10,
             boxShadow: "0 0 6px rgba(0,0,0,0.1)"
           }}>
-            <img src={p.image} style={{ width: "100%", height: 120, objectFit: "cover", borderRadius: 6, cursor: "pointer" }} onClick={() => setModal(p)} />
-            <h4>{p.title}</h4>
-            <p>{p.description}</p>
-            <strong style={{ color: "#00ffcc" }}>${p.price}</strong>
+            <img src={p.image} style={{ width: "100%", height: "auto", objectFit: "contain", borderRadius: 6, cursor: "pointer" }} onClick={() => setModal(p)} />
+            <h4 style={{ margin: "8px 0 4px" }}>{p.title}</h4>
+            <p style={{ fontSize: 14, margin: "4px 0" }}>{p.description}</p>
+            <strong style={{ color: "#00cc00" }}>${p.price}</strong>
             <p style={{ fontSize: 12, color: isDark ? "#aaa" : "#555" }}>{p.category}</p>
             <p style={{ fontSize: 11, marginBottom: 5 }}>{p.time}</p>
-            <div style={{ display: "flex", justifyContent: "space-between", fontSize: 14 }}>
-              <span onClick={() => handleLike(p.id, 1)}>👍 {p.likes}</span>
-              <span onClick={() => handleLike(p.id, -1)}>👎 {p.dislikes}</span>
-              <a href={`https://wa.me/?text=Hi I'm interested in your ${p.title}`} target="_blank" rel="noopener noreferrer">💬 WhatsApp</a>
+            <div style={{ display: "flex", justifyContent: "space-between", fontSize: 16, marginTop: 6 }}>
+              <span onClick={() => handleLike(p.id, 1)}>👍🏼 {p.likes}</span>
+              <span onClick={() => handleLike(p.id, -1)}>👎🏼 {p.dislikes}</span>
+              <a href={`https://wa.me/?text=Hi I'm interested in your ${p.title}`} target="_blank" rel="noopener noreferrer">
+                💬 WhatsApp
+              </a>
             </div>
             {p.userId === currentUserId && (
               <button onClick={() => handleDeleteProduct(p)} style={{
                 background: "#ff4444", color: "#fff",
                 border: "none", padding: "5px 10px", borderRadius: 5,
-                marginTop: 6
+                marginTop: 6, cursor: "pointer"
               }}>🗑️ Delete</button>
             )}
             <div style={{ marginTop: 10 }}>
               {p.comments.map(c => (
-                <div key={c.id} style={{ fontSize: 13, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                <div key={c.id} style={{ fontSize: 13, display: "flex", justifyContent: "space-between" }}>
                   <span>{c.text}</span>
                   {c.userId === currentUserId && (
-                    <button onClick={() => handleDeleteComment(p.id, c.id)} style={{
-                      background: "none", border: "none", color: "#f00", fontWeight: "bold", cursor: "pointer"
-                    }}>✖</button>
+                    <button onClick={() => handleDeleteComment(p.id, c.id)} style={{ background: "none", border: "none", color: "#f00", fontWeight: "bold", cursor: "pointer" }}>✖</button>
                   )}
                 </div>
               ))}
@@ -214,7 +226,7 @@ export default function Marketplace() {
                 onChange={(e) => setCommentInputs({ ...commentInputs, [p.id]: e.target.value })}
                 style={{ width: "100%", marginTop: 4 }}
               />
-              <button onClick={() => handleComment(p.id)} style={{ ...buttonStyle, width: "100%" }}>Post</button>
+              <button onClick={() => handleComment(p.id)} style={{ width: "100%", background: "#00ffcc", color: "#000", border: "none", borderRadius: 6, padding: 8, marginTop: 4 }}>Post</button>
             </div>
           </div>
         ))}
@@ -245,13 +257,3 @@ export default function Marketplace() {
     </div>
   );
 }
-
-const buttonStyle = {
-  backgroundColor: "#00ffcc",
-  color: "#000",
-  border: "none",
-  borderRadius: 6,
-  padding: "8px",
-  cursor: "pointer",
-  fontWeight: "bold"
-};
