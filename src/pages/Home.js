@@ -22,13 +22,14 @@ export default function Home() {
   const toggleDarkMode = () => setDarkMode(!darkMode);
 
   const bgStyle = {
-    backgroundImage: `url('/african-pattern.png'), ${
+    backgroundImage: `url('/assets/IMG-20250620-WA0005.jpg'), ${
       darkMode
         ? "linear-gradient(145deg, #1f1f1f, #0f0f0f)"
         : "linear-gradient(145deg, #f0f0f0, #ffffff)"
     }`,
     backgroundSize: "cover, 100%",
-    backgroundRepeat: "repeat, no-repeat",
+    backgroundRepeat: "no-repeat, no-repeat",
+    backgroundPosition: "center center",
   };
 
   const textColor = darkMode ? "#fff" : "#111";
