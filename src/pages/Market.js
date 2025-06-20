@@ -13,9 +13,9 @@ export default function Marketplace() {
   const [image, setImage] = useState(null);
   const [search, setSearch] = useState("");
   const [darkMode, setDarkMode] = useState(true);
-  const [modal, setModal] = useState(null);
   const [commentInputs, setCommentInputs] = useState({});
   const [userLikes, setUserLikes] = useState({});
+  const [modal, setModal] = useState(null);
 
   useEffect(() => {
     const productRef = ref(db, "products");
@@ -27,7 +27,8 @@ export default function Marketplace() {
           ...val,
           likes: val.likes || 0,
           dislikes: val.dislikes || 0,
-          comments: val.comments || {},
+          reactions: val.reactions || {},
+          comments: val.comments ? val.comments : {},
         }));
         setProducts(items.reverse());
       }
@@ -43,20 +44,17 @@ export default function Marketplace() {
     });
 
   const handlePost = async () => {
-    if (!title || !description || !price || !category || !image) {
-      return alert("Please fill in all fields.");
-    }
+    if (!title || !description || !price || !category || !image) return alert("Please fill all fields.");
     try {
       const base64Image = await toBase64(image);
       const formData = new FormData();
       formData.append("image", base64Image.split(",")[1]);
       const res = await fetch(`https://api.imgbb.com/1/upload?key=${IMGBB_API_KEY}`, {
         method: "POST",
-        body: formData,
+        body: formData
       });
       const data = await res.json();
       if (!data.success) throw new Error("Upload failed");
-
       const imageUrl = data.data.url;
       const imageDeleteUrl = data.data.delete_url;
 
@@ -70,17 +68,13 @@ export default function Marketplace() {
         time: new Date().toLocaleString(),
         likes: 0,
         dislikes: 0,
+        reactions: { "❤️": 0, "😂": 0, "😮": 0, "😢": 0 }
       });
 
-      setTitle("");
-      setDescription("");
-      setPrice("");
-      setCategory("");
-      setImage(null);
+      setTitle(""); setDescription(""); setPrice(""); setCategory(""); setImage(null);
       alert("✅ Product posted!");
-    } catch (err) {
-      console.error(err);
-      alert("Image upload failed.");
+    } catch (error) {
+      alert("Failed to upload");
     }
   };
 
@@ -91,9 +85,10 @@ export default function Marketplace() {
 
     const field = type === "like" ? "likes" : "dislikes";
     const prodRef = ref(db, `products/${id}`);
+    const currentValue = product[field];
+
     const alreadyToggled = userLikes[key];
-    const current = product[field];
-    const newValue = alreadyToggled ? current - 1 : current + 1;
+    const newValue = alreadyToggled ? currentValue - 1 : currentValue + 1;
 
     update(prodRef, { [field]: newValue });
     setUserLikes({ ...userLikes, [key]: !alreadyToggled });
@@ -111,9 +106,9 @@ export default function Marketplace() {
   };
 
   const deleteProduct = async (id, deleteUrl) => {
-    if (window.confirm("Delete this product permanently?")) {
-      await fetch(deleteUrl); // remove from imgbb
-      await remove(ref(db, `products/${id}`)); // remove from Firebase
+    if (confirm("Delete this product permanently?")) {
+      await fetch(deleteUrl); // delete image from imgbb
+      await remove(ref(db, `products/${id}`)); // delete from firebase
     }
   };
 
@@ -122,6 +117,15 @@ export default function Marketplace() {
     longPressTimer = setTimeout(() => deleteProduct(id, deleteUrl), 1200);
   };
   const cancelLongPress = () => clearTimeout(longPressTimer);
+
+  const addReaction = (id, emoji) => {
+    const product = products.find(p => p.id === id);
+    if (!product) return;
+    const current = product.reactions?.[emoji] || 0;
+    update(ref(db, `products/${id}/reactions`), {
+      [emoji]: current + 1
+    });
+  };
 
   const isDark = darkMode;
   const filtered = products.filter(p =>
@@ -145,9 +149,7 @@ export default function Marketplace() {
 
       <input
         style={{ ...searchInput, background: isDark ? "#1f1f1f" : "#fff", color: isDark ? "#fff" : "#000" }}
-        placeholder="🔎 Search products..."
-        value={search}
-        onChange={e => setSearch(e.target.value)}
+        placeholder="🔍 Search products..." value={search} onChange={e => setSearch(e.target.value)}
       />
 
       <div style={formStyle}>
@@ -160,7 +162,7 @@ export default function Marketplace() {
           <option>👗 Clothing</option>
           <option>🍿 Food</option>
           <option>🚗 Vehicles</option>
-          <option>🔧 Other</option>
+          <option>🛠 Other</option>
         </select>
         <input type="file" onChange={e => setImage(e.target.files[0])} />
         <button style={buttonStyle} onClick={handlePost}>📤 Post</button>
@@ -168,14 +170,10 @@ export default function Marketplace() {
 
       <div style={productGrid}>
         {filtered.map(p => (
-          <div
-            key={p.id}
+          <div key={p.id}
             style={cardStyle(isDark)}
             onTouchStart={() => startLongPress(p.id, p.imageDeleteUrl)}
             onTouchEnd={cancelLongPress}
-            onMouseDown={() => startLongPress(p.id, p.imageDeleteUrl)}
-            onMouseUp={cancelLongPress}
-            onMouseLeave={cancelLongPress}
           >
             <img src={p.image} style={imgStyle} onClick={() => setModal(p)} />
             <h3>{p.title}</h3>
@@ -183,17 +181,40 @@ export default function Marketplace() {
             <strong style={{ color: "#00ffcc" }}>{p.price}</strong>
             <div style={categoryStyle}>📂 {p.category}</div>
             <div style={{ fontSize: 12, color: "#aaa", margin: "5px 0" }}>{p.time}</div>
+
             <div>
               <span onClick={() => handleLike(p.id, "like")} style={emojiBtnStyle}>👍 {p.likes}</span>
               <span onClick={() => handleLike(p.id, "dislike")} style={emojiBtnStyle}>👎 {p.dislikes}</span>
             </div>
-            <a href={`https://wa.me/?text=Hi I'm interested in your ${encodeURIComponent(p.title)}`} target="_blank" rel="noreferrer" style={waBtnStyle}>💬 WhatsApp</a>
+
+            <div style={{ marginTop: 5 }}>
+              {["❤️", "😂", "😮", "😢"].map((emoji) => (
+                <span
+                  key={emoji}
+                  onClick={() => addReaction(p.id, emoji)}
+                  style={{ cursor: "pointer", marginRight: 6, fontSize: 18 }}
+                >
+                  {emoji} {p.reactions?.[emoji] || 0}
+                </span>
+              ))}
+            </div>
+
+            <a href={`https://wa.me/?text=Hi I'm interested in your ${encodeURIComponent(p.title)}`} target="_blank" rel="noreferrer" style={waBtnStyle}>
+              💬 WhatsApp
+            </a>
+
             {Object.entries(p.comments).map(([key, text]) => (
               <div key={key} style={{ marginTop: 5, fontSize: 14 }}>
-                {text} <span onClick={() => deleteComment(p.id, key)} style={{ color: "red", cursor: "pointer" }}>❌</span>
+                {text} <span onClick={() => deleteComment(p.id, key)} style={{ color: "red", cursor: "pointer" }}>✖</span>
               </div>
             ))}
-            <input style={commentStyle(isDark)} value={commentInputs[p.id] || ""} onChange={e => setCommentInputs({ ...commentInputs, [p.id]: e.target.value })} placeholder="💬 Comment..." />
+
+            <input
+              style={commentStyle(isDark)}
+              value={commentInputs[p.id] || ""}
+              onChange={e => setCommentInputs({ ...commentInputs, [p.id]: e.target.value })}
+              placeholder="💬 Comment..."
+            />
             <button style={buttonStyle} onClick={() => handleComment(p.id)}>Post</button>
           </div>
         ))}
@@ -202,12 +223,8 @@ export default function Marketplace() {
   );
 }
 
-// 🔧 STYLES
-const toggleBtnStyle = isDark => ({
-  position: "absolute", top: 20, right: 20, fontSize: 20,
-  background: isDark ? "#00ffcc" : "#121212", color: isDark ? "#000" : "#fff",
-  padding: 10, borderRadius: 50, border: "none", boxShadow: "0 0 10px #00ffcc99", zIndex: 2
-});
+// Keep your original styles unchanged
+const toggleBtnStyle = isDark => ({ position: "absolute", top: 20, right: 20, fontSize: 20, background: isDark ? "#00ffcc" : "#121212", color: isDark ? "#000" : "#fff", padding: 10, borderRadius: 50, border: "none", boxShadow: "0 0 10px #00ffcc99", zIndex: 2 });
 const pageStyle = { padding: 20, fontFamily: "Poppins, sans-serif", minHeight: "100vh", position: "relative" };
 const headerStyle = { textAlign: "center", margin: "20px 0", fontWeight: "bold", display: "flex", justifyContent: "center", flexWrap: "wrap" };
 const letterStyle = { background: "linear-gradient(to top,#00ffcc,#000)", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent" };
