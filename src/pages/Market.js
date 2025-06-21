@@ -1,4 +1,4 @@
-[6/20, 18:13] B.JAY: import React, { useState, useEffect } from "react";
+import React, { useState, useEffect } from "react";
 import { db } from "../firebase";
 import { ref, push, onValue, update } from "firebase/database";
 
