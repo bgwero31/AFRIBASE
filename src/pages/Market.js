@@ -17,6 +17,7 @@ export default function Marketplace() {
   const [commentInputs, setCommentInputs] = useState({});
   const [userLikes, setUserLikes] = useState({});
 
+  // Ref for hidden file input
   const hiddenFileInput = useRef(null);
 
   useEffect(() => {
@@ -29,7 +30,7 @@ export default function Marketplace() {
           ...val,
           likes: val.likes || 0,
           dislikes: val.dislikes || 0,
-          comments: val.comments || {},
+          comments: val.comments ? val.comments : {},
         }));
         setProducts(items.reverse());
       }
@@ -45,20 +46,17 @@ export default function Marketplace() {
     });
 
   const handlePost = async () => {
-    if (!title || !description || !price || !category || !image)
-      return alert("Please fill all fields.");
+    if (!title || !description || !price || !category || !image) return alert("Please fill all fields.");
     try {
       const base64Image = await toBase64(image);
       const formData = new FormData();
       formData.append("image", base64Image.split(",")[1]);
-
       const res = await fetch(`https://api.imgbb.com/1/upload?key=${IMGBB_API_KEY}`, {
         method: "POST",
         body: formData,
       });
       const data = await res.json();
       if (!data.success) throw new Error("Upload failed");
-
       const imageUrl = data.data.url;
       const imageDeleteUrl = data.data.delete_url;
 
@@ -104,8 +102,7 @@ export default function Marketplace() {
   const handleComment = (id) => {
     const text = commentInputs[id];
     if (!text) return;
-    const commentRef = ref(db, `products/${id}/comments`);
-    push(commentRef, text);
+    push(ref(db, `products/${id}/comments`), text);
     setCommentInputs({ ...commentInputs, [id]: "" });
   };
 
@@ -115,8 +112,8 @@ export default function Marketplace() {
 
   const deleteProduct = async (id, deleteUrl) => {
     if (confirm("Delete this product permanently?")) {
-      await fetch(deleteUrl);
-      await remove(ref(db, `products/${id}`));
+      await fetch(deleteUrl); // delete image from imgbb
+      await remove(ref(db, `products/${id}`)); // delete from firebase
     }
   };
 
@@ -126,16 +123,23 @@ export default function Marketplace() {
   };
   const cancelLongPress = () => clearTimeout(longPressTimer);
 
+  // Open hidden file input when image box clicked
   const onImageBoxClick = () => {
-    if (hiddenFileInput.current) hiddenFileInput.current.click();
+    if (hiddenFileInput.current) {
+      hiddenFileInput.current.click();
+    }
   };
 
+  // Handle file selection from hidden input
   const onFileChange = (e) => {
-    if (e.target.files && e.target.files[0]) setImage(e.target.files[0]);
+    if (e.target.files && e.target.files[0]) {
+      setImage(e.target.files[0]);
+    }
   };
 
+  // Handle Inbox button click — replace URL with your actual inbox/chat page
   const openInbox = () => {
-    window.location.href = "/inbox";
+    window.location.href = "/inbox"; // Or your chat inbox route
   };
 
   const isDark = darkMode;
@@ -187,8 +191,16 @@ export default function Marketplace() {
           <option>🛠 Other</option>
         </select>
 
-        <input type="file" style={{ display: "none" }} ref={hiddenFileInput} onChange={onFileChange} accept="image/*" />
+        {/* Hidden file input */}
+        <input
+          type="file"
+          style={{ display: "none" }}
+          ref={hiddenFileInput}
+          onChange={onFileChange}
+          accept="image/*"
+        />
 
+        {/* Image box that triggers file select */}
         <div
           onClick={onImageBoxClick}
           style={{
@@ -290,7 +302,7 @@ export default function Marketplace() {
   );
 }
 
-// 💡 Styles
+// Styles
 const toggleBtnStyle = (isDark) => ({
   position: "absolute",
   top: 20,
@@ -317,107 +329,3 @@ const inboxBtnStyle = {
   border: "none",
   cursor: "pointer",
   boxShadow: "0 0 10px #00a85199",
-};
-
-const pageStyle = { padding: 20, minHeight: "100vh", fontFamily: "Poppins", position: "relative" };
-const headerStyle = { textAlign: "center", margin: "20px 0", fontWeight: 800 };
-const letterStyle = {
-  background: "linear-gradient(to top,#00ffcc,#000)",
-  WebkitBackgroundClip: "text",
-  WebkitTextFillColor: "transparent",
-};
-const searchInput = {
-  width: "100%",
-  maxWidth: 400,
-  display: "block",
-  margin: "0 auto 20px",
-  padding: "10px",
-  border: "none",
-  borderRadius: 8,
-  fontSize: 16,
-};
-const formStyle = { display: "flex", flexDirection: "column", gap: 10, maxWidth: 400, margin: "0 auto 20px" };
-const inputStyle = (isDark) => ({
-  padding: 12,
-  borderRadius: 8,
-  border: "none",
-  fontSize: 16,
-  background: isDark ? "#1f1f1f" : "#fff",
-  color: isDark ? "#fff" : "#000",
-});
-const buttonStyle = {
-  padding: 10,
-  backgroundColor: "#00ffcc",
-  color: "#000",
-  border: "none",
-  borderRadius: 6,
-  fontSize: 14,
-  cursor: "pointer",
-  marginTop: 5,
-};
-const productGrid = {
-  display: "grid",
-  gridTemplateColumns: "repeat(auto-fill,minmax(180px,1fr))",
-  gap: 16,
-};
-const cardStyle = (isDark) => ({
-  padding: 12,
-  borderRadius: 10,
-  boxShadow: "0 0 10px #00ffcc30",
-  background: isDark ? "#1e1e1e" : "#fff",
-  color: isDark ? "#fff" : "#000",
-});
-const imgStyle = {
-  width: "100%",
-  height: 140,
-  objectFit: "cover",
-  borderRadius: 8,
-  marginBottom: 10,
-  cursor: "pointer",
-};
-const categoryStyle = { fontSize: 14, color: "#00ffcc", margin: "5px 0" };
-const emojiBtnStyle = { cursor: "pointer", marginRight: 10, fontSize: 16 };
-const waBtnStyle = {
-  backgroundColor: "#25D366",
-  color: "#fff",
-  padding: "6px 12px",
-  borderRadius: 20,
-  textDecoration: "none",
-  fontSize: 14,
-  fontWeight: "500",
-  display: "inline-block",
-  marginTop: 10,
-};
-const commentStyle = (isDark) => ({
-  ...inputStyle(isDark),
-  marginTop: 10,
-});
-const modalOverlay = {
-  position: "fixed",
-  top: 0,
-  left: 0,
-  right: 0,
-  bottom: 0,
-  background: "rgba(0,0,0,0.7)",
-  display: "flex",
-  justifyContent: "center",
-  alignItems: "center",
-  zIndex: 10,
-};
-const modalContent = {
-  background: "#1e1e1e",
-  padding: 20,
-  borderRadius: 10,
-  maxWidth: "90%",
-  maxHeight: "90%",
-  color: "#fff",
-  overflowY: "auto",
-  textAlign: "center",
-};
-const modalImage = {
-  width: "100%",
-  maxHeight: 300,
-  objectFit: "contain",
-  borderRadius: 8,
-  marginBottom: 20,
-};
