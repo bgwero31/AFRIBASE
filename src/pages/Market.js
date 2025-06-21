@@ -1,8 +1,9 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect } from "react";
 import { db } from "../firebase";
 import { ref, push, onValue, update, remove } from "firebase/database";
 
 const IMGBB_API_KEY = "30df4aa05f1af3b3b58ee8a74639e5cf";
+const EMOJIS = ["❤️", "😂", "😮", "😢"];
 
 export default function Marketplace() {
   const [products, setProducts] = useState([]);
@@ -13,12 +14,9 @@ export default function Marketplace() {
   const [image, setImage] = useState(null);
   const [search, setSearch] = useState("");
   const [darkMode, setDarkMode] = useState(true);
-  const [modal, setModal] = useState(null);
   const [commentInputs, setCommentInputs] = useState({});
-  const [userLikes, setUserLikes] = useState({});
-
-  // Ref for hidden file input
-  const hiddenFileInput = useRef(null);
+  const [userReactions, setUserReactions] = useState({});
+  let longPressTimer;
 
   useEffect(() => {
     const productRef = ref(db, "products");
@@ -28,9 +26,8 @@ export default function Marketplace() {
         const items = Object.entries(data).map(([id, val]) => ({
           id,
           ...val,
-          likes: val.likes || 0,
-          dislikes: val.dislikes || 0,
-          comments: val.comments ? val.comments : {},
+          reactions: val.reactions || { "❤️": 0, "😂": 0, "😮": 0, "😢": 0 },
+          comments: val.comments || {},
         }));
         setProducts(items.reverse());
       }
@@ -46,7 +43,8 @@ export default function Marketplace() {
     });
 
   const handlePost = async () => {
-    if (!title || !description || !price || !category || !image) return alert("Please fill all fields.");
+    if (!title || !description || !price || !category || !image)
+      return alert("Please fill all fields.");
     try {
       const base64Image = await toBase64(image);
       const formData = new FormData();
@@ -70,6 +68,7 @@ export default function Marketplace() {
         time: new Date().toLocaleString(),
         likes: 0,
         dislikes: 0,
+        reactions: { "❤️": 0, "😂": 0, "😮": 0, "😢": 0 },
       });
 
       setTitle("");
@@ -83,20 +82,20 @@ export default function Marketplace() {
     }
   };
 
-  const handleLike = (id, type) => {
-    const key = `${id}_${type}`;
+  const handleReaction = (id, emoji) => {
+    const key = `${id}_${emoji}`;
     const product = products.find((p) => p.id === id);
     if (!product) return;
 
-    const field = type === "like" ? "likes" : "dislikes";
-    const prodRef = ref(db, `products/${id}`);
-    const currentValue = product[field];
+    const current = product.reactions?.[emoji] || 0;
+    const toggled = userReactions[key];
+    const newValue = toggled ? current - 1 : current + 1;
 
-    const alreadyToggled = userLikes[key];
-    const newValue = alreadyToggled ? currentValue - 1 : currentValue + 1;
+    update(ref(db, `products/${id}/reactions`), {
+      [emoji]: newValue,
+    });
 
-    update(prodRef, { [field]: newValue });
-    setUserLikes({ ...userLikes, [key]: !alreadyToggled });
+    setUserReactions({ ...userReactions, [key]: !toggled });
   };
 
   const handleComment = (id) => {
@@ -111,36 +110,16 @@ export default function Marketplace() {
   };
 
   const deleteProduct = async (id, deleteUrl) => {
-    if (confirm("Delete this product permanently?")) {
+    if (window.confirm("Delete this product permanently?")) {
       await fetch(deleteUrl); // delete image from imgbb
       await remove(ref(db, `products/${id}`)); // delete from firebase
     }
   };
 
-  let longPressTimer;
   const startLongPress = (id, deleteUrl) => {
     longPressTimer = setTimeout(() => deleteProduct(id, deleteUrl), 1200);
   };
   const cancelLongPress = () => clearTimeout(longPressTimer);
-
-  // Open hidden file input when image box clicked
-  const onImageBoxClick = () => {
-    if (hiddenFileInput.current) {
-      hiddenFileInput.current.click();
-    }
-  };
-
-  // Handle file selection from hidden input
-  const onFileChange = (e) => {
-    if (e.target.files && e.target.files[0]) {
-      setImage(e.target.files[0]);
-    }
-  };
-
-  // Handle Inbox button click — replace URL with your actual inbox/chat page
-  const openInbox = () => {
-    window.location.href = "/inbox"; // Or your chat inbox route
-  };
 
   const isDark = darkMode;
   const filtered = products.filter(
@@ -150,182 +129,78 @@ export default function Marketplace() {
   );
 
   return (
-    <div style={{ ...pageStyle, background: isDark ? "#121212" : "#f4f4f4", color: isDark ? "#fff" : "#000" }}>
-      <button style={toggleBtnStyle(isDark)} onClick={() => setDarkMode(!darkMode)}>
-        {isDark ? "🌙" : "🌞"}
+    <div style={{ padding: 20, minHeight: "100vh", background: isDark ? "#121212" : "#f4f4f4", color: isDark ? "#fff" : "#000" }}>
+      <button onClick={() => setDarkMode(!darkMode)} style={{ position: "absolute", top: 20, right: 20 }}>
+        {isDark ? "☀️" : "🌙"}
       </button>
 
-      <button onClick={openInbox} style={inboxBtnStyle}>
-        📥 Inbox
-      </button>
+      <h2>AFRIBASE MARKETPLACE</h2>
 
-      <h2 style={headerStyle}>
-        {"AFRIBASE MARKETPLACE".split(" ").map((w, i) => (
-          <span key={i} style={{ marginRight: 10 }}>
-            {w.split("").map((c, j) => (
-              <span key={j} style={letterStyle}>
-                {c}
-              </span>
-            ))}
-          </span>
-        ))}
-      </h2>
+      <input placeholder="🔎 Search products..." value={search} onChange={(e) => setSearch(e.target.value)} />
 
-      <input
-        style={{ ...searchInput, background: isDark ? "#1f1f1f" : "#fff", color: isDark ? "#fff" : "#000" }}
-        placeholder="🔎 Search products..."
-        value={search}
-        onChange={(e) => setSearch(e.target.value)}
-      />
-
-      <div style={formStyle}>
-        <input style={inputStyle(isDark)} placeholder="Title" value={title} onChange={(e) => setTitle(e.target.value)} />
-        <textarea style={inputStyle(isDark)} placeholder="Description" value={description} onChange={(e) => setDescription(e.target.value)} />
-        <input style={inputStyle(isDark)} placeholder="Price" value={price} onChange={(e) => setPrice(e.target.value)} />
-        <select style={inputStyle(isDark)} value={category} onChange={(e) => setCategory(e.target.value)}>
+      <div>
+        <input placeholder="Title" value={title} onChange={(e) => setTitle(e.target.value)} />
+        <textarea placeholder="Description" value={description} onChange={(e) => setDescription(e.target.value)} />
+        <input placeholder="Price" value={price} onChange={(e) => setPrice(e.target.value)} />
+        <select value={category} onChange={(e) => setCategory(e.target.value)}>
           <option value="">Category</option>
           <option>📱 Electronics</option>
           <option>👗 Clothing</option>
           <option>🍿 Food</option>
           <option>🚗 Vehicles</option>
-          <option>🛠 Other</option>
+          <option>🔧 Other</option>
         </select>
-
-        {/* Hidden file input */}
-        <input
-          type="file"
-          style={{ display: "none" }}
-          ref={hiddenFileInput}
-          onChange={onFileChange}
-          accept="image/*"
-        />
-
-        {/* Image box that triggers file select */}
-        <div
-          onClick={onImageBoxClick}
-          style={{
-            ...imgStyle,
-            backgroundColor: "#222",
-            color: "#aaa",
-            display: "flex",
-            justifyContent: "center",
-            alignItems: "center",
-            cursor: "pointer",
-            marginBottom: 15,
-            userSelect: "none",
-            border: "2px dashed #00ffcc",
-          }}
-        >
-          {image ? (
-            <img
-              src={URL.createObjectURL(image)}
-              alt="Selected"
-              style={{ width: "100%", height: "100%", objectFit: "cover", borderRadius: 8 }}
-            />
-          ) : (
-            <span>Click here to select product image</span>
-          )}
-        </div>
-
-        <button style={buttonStyle} onClick={handlePost}>
-          📝 Post
-        </button>
+        <input type="file" onChange={(e) => setImage(e.target.files[0])} />
+        <button onClick={handlePost}>📤 Post</button>
       </div>
 
-      <div style={productGrid}>
+      <div style={{ display: "grid", gap: 10 }}>
         {filtered.map((p) => (
           <div
             key={p.id}
-            style={cardStyle(isDark)}
             onTouchStart={() => startLongPress(p.id, p.imageDeleteUrl)}
             onTouchEnd={cancelLongPress}
+            style={{ background: isDark ? "#1e1e1e" : "#fff", padding: 10, borderRadius: 8 }}
           >
-            <img src={p.image} style={imgStyle} onClick={() => setModal(p)} alt={p.title} />
+            <img src={p.image} style={{ width: "100%", height: 150, objectFit: "cover", borderRadius: 8 }} />
             <h3>{p.title}</h3>
             <p>{p.description}</p>
-            <strong style={{ color: "#00ffcc" }}>{p.price}</strong>
-            <div style={categoryStyle}>📂 {p.category}</div>
-            <div style={{ fontSize: 12, color: "#aaa", margin: "5px 0" }}>{p.time}</div>
+            <p>💵 {p.price}</p>
+            <p>{p.category}</p>
+            <p style={{ fontSize: 12, color: "#888" }}>{p.time}</p>
+
             <div>
-              <span onClick={() => handleLike(p.id, "like")} style={emojiBtnStyle}>
-                👍 {p.likes}
-              </span>
-              <span onClick={() => handleLike(p.id, "dislike")} style={emojiBtnStyle}>
-                👎 {p.dislikes}
-              </span>
+              {EMOJIS.map((emoji) => (
+                <span
+                  key={emoji}
+                  style={{ fontSize: 20, marginRight: 10, cursor: "pointer" }}
+                  onClick={() => handleReaction(p.id, emoji)}
+                >
+                  {emoji} {p.reactions?.[emoji] || 0}
+                </span>
+              ))}
             </div>
-            <a
-              href={`https://wa.me/?text=Hi I'm interested in your ${encodeURIComponent(p.title)}`}
-              target="_blank"
-              rel="noreferrer"
-              style={waBtnStyle}
-            >
+
+            <div>
+              {Object.entries(p.comments).map(([key, val]) => (
+                <div key={key}>
+                  💬 {val} <span onClick={() => deleteComment(p.id, key)} style={{ color: "red", cursor: "pointer" }}>❌</span>
+                </div>
+              ))}
+              <input
+                placeholder="💬 Add comment"
+                value={commentInputs[p.id] || ""}
+                onChange={(e) => setCommentInputs({ ...commentInputs, [p.id]: e.target.value })}
+              />
+              <button onClick={() => handleComment(p.id)}>Post</button>
+            </div>
+
+            <a href={`https://wa.me/?text=Hi I'm interested in your ${encodeURIComponent(p.title)}`} target="_blank" rel="noopener noreferrer">
               💬 WhatsApp
             </a>
-            {Object.entries(p.comments).map(([key, text]) => (
-              <div key={key} style={{ marginTop: 5, fontSize: 14 }}>
-                {text}{" "}
-                <span onClick={() => deleteComment(p.id, key)} style={{ color: "red", cursor: "pointer" }}>
-                  ✖
-                </span>
-              </div>
-            ))}
-            <input
-              style={commentStyle(isDark)}
-              value={commentInputs[p.id] || ""}
-              onChange={(e) => setCommentInputs({ ...commentInputs, [p.id]: e.target.value })}
-              placeholder="💬 Comment..."
-            />
-            <button style={buttonStyle} onClick={() => handleComment(p.id)}>
-              Post
-            </button>
           </div>
         ))}
       </div>
-
-      {modal && (
-        <div style={modalOverlay} onClick={() => setModal(null)}>
-          <div style={modalContent}>
-            <img src={modal.image} style={modalImage} alt={modal.title} />
-            <h2>{modal.title}</h2>
-            <p>{modal.description}</p>
-            <p>📂 {modal.category}</p>
-            <p style={{ color: "#00ffcc", fontWeight: "bold" }}>{modal.price}</p>
-            <p style={{ fontSize: 12, color: "#aaa" }}>{modal.time}</p>
-            <a href={`https://wa.me/?text=Hi I'm interested`} style={waBtnStyle}>
-              💬 WhatsApp
-            </a>
-          </div>
-        </div>
-      )}
     </div>
   );
 }
-
-// Styles
-const toggleBtnStyle = (isDark) => ({
-  position: "absolute",
-  top: 20,
-  right: 20,
-  fontSize: 20,
-  background: isDark ? "#00ffcc" : "#121212",
-  color: isDark ? "#000" : "#fff",
-  padding: 10,
-  borderRadius: 50,
-  border: "none",
-  boxShadow: "0 0 10px #00ffcc99",
-  zIndex: 2,
-});
-
-const inboxBtnStyle = {
-  position: "absolute",
-  top: 20,
-  left: 20,
-  fontSize: 18,
-  backgroundColor: "#00a851",
-  color: "#fff",
-  padding: "8px 15px",
-  borderRadius: 20,
-  border: "none",
-  cursor: "pointer",
-  boxShadow: "0 0 10px #00a85199",
