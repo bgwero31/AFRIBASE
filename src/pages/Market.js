@@ -15,9 +15,7 @@ export default function Marketplace() {
   const [darkMode, setDarkMode] = useState(true);
   const [modal, setModal] = useState(null);
   const [commentInputs, setCommentInputs] = useState({});
-  const [userLikes, setUserLikes] = useState({});
 
-  // Ref for hidden file input
   const hiddenFileInput = useRef(null);
 
   useEffect(() => {
@@ -30,7 +28,7 @@ export default function Marketplace() {
           ...val,
           likes: val.likes || 0,
           dislikes: val.dislikes || 0,
-          comments: val.comments ? val.comments : {},
+          comments: val.comments || {},
         }));
         setProducts(items.reverse());
       }
@@ -46,7 +44,8 @@ export default function Marketplace() {
     });
 
   const handlePost = async () => {
-    if (!title || !description || !price || !category || !image) return alert("Please fill all fields.");
+    if (!title || !description || !price || !category || !image)
+      return alert("Please fill all fields.");
     try {
       const base64Image = await toBase64(image);
       const formData = new FormData();
@@ -84,19 +83,14 @@ export default function Marketplace() {
   };
 
   const handleLike = (id, type) => {
-    const key = `${id}_${type}`;
     const product = products.find((p) => p.id === id);
     if (!product) return;
 
     const field = type === "like" ? "likes" : "dislikes";
     const prodRef = ref(db, `products/${id}`);
-    const currentValue = product[field];
-
-    const alreadyToggled = userLikes[key];
-    const newValue = alreadyToggled ? currentValue - 1 : currentValue + 1;
+    const newValue = (product[field] || 0) + 1;
 
     update(prodRef, { [field]: newValue });
-    setUserLikes({ ...userLikes, [key]: !alreadyToggled });
   };
 
   const handleComment = (id) => {
@@ -112,8 +106,8 @@ export default function Marketplace() {
 
   const deleteProduct = async (id, deleteUrl) => {
     if (confirm("Delete this product permanently?")) {
-      await fetch(deleteUrl); // delete image from imgbb
-      await remove(ref(db, `products/${id}`)); // delete from firebase
+      await fetch(deleteUrl);
+      await remove(ref(db, `products/${id}`));
     }
   };
 
@@ -123,23 +117,15 @@ export default function Marketplace() {
   };
   const cancelLongPress = () => clearTimeout(longPressTimer);
 
-  // Open hidden file input when image box clicked
-  const onImageBoxClick = () => {
-    if (hiddenFileInput.current) {
-      hiddenFileInput.current.click();
-    }
-  };
-
-  // Handle file selection from hidden input
+  const onImageBoxClick = () => hiddenFileInput.current?.click();
   const onFileChange = (e) => {
     if (e.target.files && e.target.files[0]) {
       setImage(e.target.files[0]);
     }
   };
 
-  // Handle Inbox button click — replace URL with your actual inbox/chat page
   const openInbox = () => {
-    window.location.href = "/inbox"; // Or your chat inbox route
+    window.location.href = "/inbox";
   };
 
   const isDark = darkMode;
@@ -191,7 +177,6 @@ export default function Marketplace() {
           <option>🛠 Other</option>
         </select>
 
-        {/* Hidden file input */}
         <input
           type="file"
           style={{ display: "none" }}
@@ -200,7 +185,6 @@ export default function Marketplace() {
           accept="image/*"
         />
 
-        {/* Image box that triggers file select */}
         <div
           onClick={onImageBoxClick}
           style={{
@@ -217,19 +201,13 @@ export default function Marketplace() {
           }}
         >
           {image ? (
-            <img
-              src={URL.createObjectURL(image)}
-              alt="Selected"
-              style={{ width: "100%", height: "100%", objectFit: "cover", borderRadius: 8 }}
-            />
+            <img src={URL.createObjectURL(image)} alt="Selected" style={{ width: "100%", height: "100%", objectFit: "cover", borderRadius: 8 }} />
           ) : (
             <span>Click here to select product image</span>
           )}
         </div>
 
-        <button style={buttonStyle} onClick={handlePost}>
-          📝 Post
-        </button>
+        <button style={buttonStyle} onClick={handlePost}>📝 Post</button>
       </div>
 
       <div style={productGrid}>
@@ -276,9 +254,7 @@ export default function Marketplace() {
               onChange={(e) => setCommentInputs({ ...commentInputs, [p.id]: e.target.value })}
               placeholder="💬 Comment..."
             />
-            <button style={buttonStyle} onClick={() => handleComment(p.id)}>
-              Post
-            </button>
+            <button style={buttonStyle} onClick={() => handleComment(p.id)}>Post</button>
           </div>
         ))}
       </div>
@@ -302,30 +278,4 @@ export default function Marketplace() {
   );
 }
 
-// Styles
-const toggleBtnStyle = (isDark) => ({
-  position: "absolute",
-  top: 20,
-  right: 20,
-  fontSize: 20,
-  background: isDark ? "#00ffcc" : "#121212",
-  color: isDark ? "#000" : "#fff",
-  padding: 10,
-  borderRadius: 50,
-  border: "none",
-  boxShadow: "0 0 10px #00ffcc99",
-  zIndex: 2,
-});
-
-const inboxBtnStyle = {
-  position: "absolute",
-  top: 20,
-  left: 20,
-  fontSize: 18,
-  backgroundColor: "#00a851",
-  color: "#fff",
-  padding: "8px 15px",
-  borderRadius: 20,
-  border: "none",
-  cursor: "pointer",
-  boxShadow: "0 0 10px #00a85199",
+// (Add your styles below if not already defined)
