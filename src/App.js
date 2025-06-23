@@ -1,77 +1,47 @@
-// src/App.js
 import React, { useEffect, useState } from "react";
 import { BrowserRouter as Router, Routes, Route, Navigate } from "react-router-dom";
 import { getAuth, onAuthStateChanged } from "firebase/auth";
-
 import Home from "./pages/Home";
 import Chat from "./pages/Chat";
 import Market from "./pages/Market";
 import Profile from "./pages/Profile";
 import Login from "./pages/Login";
 
-const auth = getAuth();
-
-function LoadingSpinner() {
-  return (
-    <div style={spinnerContainer}>
-      <div style={spinner}></div>
-      <p style={{ marginTop: 10, color: "#ccc", fontFamily: "Poppins" }}>Loading...</p>
-    </div>
-  );
-}
-
-function ProtectedRoute({ children }) {
-  const [user, setUser] = useState(undefined); // undefined = loading
+function App() {
+  const [user, setUser] = useState(null);
+  const [checking, setChecking] = useState(true);
+  const auth = getAuth();
 
   useEffect(() => {
-    const unsub = onAuthStateChanged(auth, (u) => {
-      setUser(u || null);
+    const unsubscribe = onAuthStateChanged(auth, (u) => {
+      setUser(u);
+      setChecking(false);
     });
-    return () => unsub();
+    return () => unsubscribe();
   }, []);
 
-  if (user === undefined) return <LoadingSpinner />;
-  return user ? children : <Navigate to="/login" />;
-}
+  if (checking) {
+    return (
+      <div style={spinnerContainer}>
+        <div className="spinner" />
+      </div>
+    );
+  }
 
-function App() {
   return (
     <Router>
       <Routes>
-        <Route path="/login" element={<Login />} />
-
-        <Route
-          path="/"
-          element={
-            <ProtectedRoute>
-              <Home />
-            </ProtectedRoute>
-          }
-        />
-        <Route
-          path="/chat"
-          element={
-            <ProtectedRoute>
-              <Chat />
-            </ProtectedRoute>
-          }
-        />
-        <Route
-          path="/market"
-          element={
-            <ProtectedRoute>
-              <Market />
-            </ProtectedRoute>
-          }
-        />
-        <Route
-          path="/profile"
-          element={
-            <ProtectedRoute>
-              <Profile />
-            </ProtectedRoute>
-          }
-        />
+        {!user ? (
+          <Route path="*" element={<Login />} />
+        ) : (
+          <>
+            <Route path="/" element={<Home />} />
+            <Route path="/chat" element={<Chat />} />
+            <Route path="/market" element={<Market />} />
+            <Route path="/profile" element={<Profile />} />
+            <Route path="*" element={<Navigate to="/" />} />
+          </>
+        )}
       </Routes>
     </Router>
   );
@@ -79,31 +49,27 @@ function App() {
 
 export default App;
 
-// Spinner styles
+// Spinner Styles
 const spinnerContainer = {
   height: "100vh",
   display: "flex",
-  flexDirection: "column",
   justifyContent: "center",
   alignItems: "center",
-  background: "#121212",
+  background: "#000",
 };
 
-const spinner = {
-  width: "50px",
-  height: "50px",
-  border: "6px solid #00cc88",
-  borderTop: "6px solid transparent",
-  borderRadius: "50%",
-  animation: "spin 1s linear infinite",
-};
-
-// Add global keyframe spinner CSS
-const styleTag = document.createElement("style");
-styleTag.innerHTML = `
-  @keyframes spin {
-    0% { transform: rotate(0deg); }
-    100% { transform: rotate(360deg); }
-  }
-`;
-document.head.appendChild(styleTag);
+const style = document.createElement("style");
+style.innerHTML = `
+.spinner {
+  border: 6px solid #f3f3f3;
+  border-top: 6px solid #00cc88;
+  border-radius: 50%;
+  width: 50px;
+  height: 50px;
+  animation: spin 1s linear infinite;
+}
+@keyframes spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}`;
+document.head.appendChild(style);
