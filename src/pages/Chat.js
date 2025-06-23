@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from "react";
-import { db, storage } from "../firebase"; // make sure storage is imported
+import { db, storage } from "../firebase";
 import { ref as dbRef, push, onValue } from "firebase/database";
 import { ref as storageRef, uploadBytesResumable, getDownloadURL } from "firebase/storage";
 
@@ -12,12 +12,17 @@ export default function Chat() {
 
   useEffect(() => {
     const chatRef = dbRef(db, "messages");
-    onValue(chatRef, (snapshot) => {
+    const unsubscribe = onValue(chatRef, (snapshot) => {
       const data = snapshot.val();
       if (data) {
-        setMessages(Object.values(data));
+        const msgs = Object.entries(data).map(([id, msg]) => ({ id, ...msg }));
+        setMessages(msgs);
+      } else {
+        setMessages([]);
       }
     });
+
+    return () => unsubscribe();
   }, []);
 
   useEffect(() => {
@@ -25,18 +30,17 @@ export default function Chat() {
   }, [messages]);
 
   const sendMessage = () => {
-    if (name && (message.trim() !== "")) {
+    if (name && message.trim() !== "") {
       push(dbRef(db, "messages"), {
         name,
         text: message,
-        time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-        type: "text"
+        time: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+        type: "text",
       });
       setMessage("");
     }
   };
 
-  // Handle image upload
   const handleImageUpload = (e) => {
     if (!name) return alert("Please enter your name first");
 
@@ -57,17 +61,16 @@ export default function Chat() {
           push(dbRef(db, "messages"), {
             name,
             imageUrl: downloadURL,
-            time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-            type: "image"
+            time: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+            type: "image",
           });
         });
       }
     );
   };
 
-  // Handle emoji pick (simple toggle + insert emoji)
   const addEmoji = (emoji) => {
-    setMessage(prev => prev + emoji);
+    setMessage((prev) => prev + emoji);
   };
 
   return (
@@ -77,11 +80,11 @@ export default function Chat() {
       </div>
 
       <div style={messagesContainer}>
-        {messages.map((msg, i) => {
+        {messages.map((msg) => {
           const isOwn = msg.name === name;
           return (
             <div
-              key={i}
+              key={msg.id}
               style={{
                 ...msgStyle,
                 alignSelf: isOwn ? "flex-end" : "flex-start",
@@ -127,30 +130,20 @@ export default function Chat() {
                 onChange={(e) => setMessage(e.target.value)}
                 onKeyDown={(e) => e.key === "Enter" && sendMessage()}
               />
-              {/* Image upload button */}
               <label style={iconButton} title="Send Image">
                 📎
-                <input
-                  type="file"
-                  accept="image/*"
-                  style={{ display: "none" }}
-                  onChange={handleImageUpload}
-                />
+                <input type="file" accept="image/*" style={{ display: "none" }} onChange={handleImageUpload} />
               </label>
 
-              {/* Emoji picker button */}
-              <button
-                onClick={() => setShowEmojiPicker(!showEmojiPicker)}
-                style={iconButton}
-                title="Add Emoji"
-              >
+              <button onClick={() => setShowEmojiPicker(!showEmojiPicker)} style={iconButton} title="Add Emoji">
                 😊
               </button>
             </div>
 
-            <button onClick={sendMessage} style={btnStyle}>Send</button>
+            <button onClick={sendMessage} style={btnStyle}>
+              Send
+            </button>
 
-            {/* Simple emoji picker */}
             {showEmojiPicker && (
               <div style={emojiPicker}>
                 {["😀", "😂", "😍", "😎", "👍", "🙏", "🔥", "❤️"].map((emoji) => (
@@ -171,12 +164,13 @@ export default function Chat() {
   );
 }
 
+// your styles remain unchanged
 const chatWrapper = {
   display: "flex",
   flexDirection: "column",
   height: "100vh",
   backgroundColor: "#121212",
-  fontFamily: "Poppins, sans-serif"
+  fontFamily: "Poppins, sans-serif",
 };
 
 const chatHeader = {
@@ -185,7 +179,7 @@ const chatHeader = {
   color: "#000",
   fontWeight: "bold",
   fontSize: "18px",
-  textAlign: "center"
+  textAlign: "center",
 };
 
 const messagesContainer = {
@@ -194,7 +188,7 @@ const messagesContainer = {
   overflowY: "auto",
   display: "flex",
   flexDirection: "column",
-  gap: "12px"
+  gap: "12px",
 };
 
 const msgStyle = {
@@ -203,21 +197,21 @@ const msgStyle = {
   maxWidth: "75%",
   boxShadow: "0 0 5px rgba(0,0,0,0.2)",
   fontSize: "15px",
-  lineHeight: "1.4"
+  lineHeight: "1.4",
 };
 
 const timeStyle = {
   fontSize: "11px",
   color: "#888",
   textAlign: "right",
-  marginTop: "4px"
+  marginTop: "4px",
 };
 
 const inputWrapper = {
   display: "flex",
   flexDirection: "column",
   padding: "10px",
-  borderTop: "1px solid #333"
+  borderTop: "1px solid #333",
 };
 
 const inputStyle = {
@@ -225,7 +219,7 @@ const inputStyle = {
   borderRadius: "6px",
   border: "none",
   fontSize: "16px",
-  marginBottom: "8px"
+  marginBottom: "8px",
 };
 
 const btnStyle = {
@@ -235,7 +229,7 @@ const btnStyle = {
   border: "none",
   borderRadius: "6px",
   fontWeight: "bold",
-  cursor: "pointer"
+  cursor: "pointer",
 };
 
 const iconButton = {
@@ -244,7 +238,7 @@ const iconButton = {
   background: "transparent",
   border: "none",
   color: "#00ffcc",
-  userSelect: "none"
+  userSelect: "none",
 };
 
 const emojiPicker = {
@@ -254,5 +248,5 @@ const emojiPicker = {
   borderRadius: "8px",
   display: "flex",
   flexWrap: "wrap",
-  justifyContent: "center"
+  justifyContent: "center",
 };
