@@ -36,6 +36,7 @@ export default function Chat() {
         text: message,
         time: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
         type: "text",
+        status: "sent", // Message status to track delivery
       });
       setMessage("");
     }
@@ -63,6 +64,7 @@ export default function Chat() {
             imageUrl: downloadURL,
             time: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
             type: "image",
+            status: "sent", // Image status to track delivery
           });
         });
       }
@@ -71,6 +73,10 @@ export default function Chat() {
 
   const addEmoji = (emoji) => {
     setMessage((prev) => prev + emoji);
+  };
+
+  const messageStatus = (status) => {
+    return status === "sent" ? "✅" : "✅✅"; // Display one or two ticks based on message status
   };
 
   return (
@@ -105,7 +111,9 @@ export default function Chat() {
               ) : (
                 <div>{msg.text}</div>
               )}
-              <div style={timeStyle}>{msg.time}</div>
+              <div style={timeStyle}>
+                {msg.time} {messageStatus(msg.status)}
+              </div>
             </div>
           );
         })}
@@ -178,7 +186,8 @@ const chatWrapper = {
   display: "flex",
   flexDirection: "column",
   height: "100vh",
-  backgroundColor: "#121212",
+  backgroundImage: "url('/assets/temp_1738232491498.png')", // Background image applied
+  backgroundSize: "cover",
   fontFamily: "Poppins, sans-serif",
 };
 
