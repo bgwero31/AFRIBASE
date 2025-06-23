@@ -130,12 +130,22 @@ export default function Chat() {
                 onChange={(e) => setMessage(e.target.value)}
                 onKeyDown={(e) => e.key === "Enter" && sendMessage()}
               />
+
               <label style={iconButton} title="Send Image">
                 📎
-                <input type="file" accept="image/*" style={{ display: "none" }} onChange={handleImageUpload} />
+                <input
+                  type="file"
+                  accept="image/*"
+                  style={{ display: "none" }}
+                  onChange={handleImageUpload}
+                />
               </label>
 
-              <button onClick={() => setShowEmojiPicker(!showEmojiPicker)} style={iconButton} title="Add Emoji">
+              <button
+                onClick={() => setShowEmojiPicker(!showEmojiPicker)}
+                style={iconButton}
+                title="Add Emoji"
+              >
                 😊
               </button>
             </div>
@@ -164,7 +174,6 @@ export default function Chat() {
   );
 }
 
-// your styles remain unchanged
 const chatWrapper = {
   display: "flex",
   flexDirection: "column",
