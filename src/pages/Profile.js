@@ -1,10 +1,12 @@
+// src/pages/Profile.js
+
 import React, { useEffect, useState } from "react";
 import {
   getAuth,
   signOut,
   onAuthStateChanged,
 } from "firebase/auth";
-import { ref, get, child, update } from "firebase/database";
+import { ref, get, child, update, onValue } from "firebase/database";
 import { db } from "../firebase";
 
 const auth = getAuth();
@@ -16,16 +18,17 @@ export default function Profile() {
   const [uploading, setUploading] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const [postedImages, setPostedImages] = useState([]);
-  const [inboxCount, setInboxCount] = useState(0);
+  const [inboxMessages, setInboxMessages] = useState([]);
+  const [outboxMessages, setOutboxMessages] = useState([]);
 
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, async (u) => {
       if (u) {
         setUser(u);
-        const snapshot = await get(child(ref(db), `users/${u.uid}`));
-        if (snapshot.exists()) setProfileData(snapshot.val());
 
-        // Get posted product images
+        const userSnap = await get(child(ref(db), `users/${u.uid}`));
+        if (userSnap.exists()) setProfileData(userSnap.val());
+
         const productsSnap = await get(child(ref(db), `products`));
         const userPosts = [];
         if (productsSnap.exists()) {
@@ -35,14 +38,35 @@ export default function Profile() {
         }
         setPostedImages(userPosts);
 
-        // Get inbox count
-        const inboxSnap = await get(child(ref(db), `inbox/${u.uid}`));
-        setInboxCount(inboxSnap.exists() ? Object.keys(inboxSnap.val()).length : 0);
+        const inboxRef = ref(db, `inbox/${u.uid}`);
+        onValue(inboxRef, (snap) => {
+          if (snap.exists()) {
+            const msgs = Object.values(snap.val());
+            setInboxMessages(msgs.sort((a, b) => b.time - a.time));
+          } else {
+            setInboxMessages([]);
+          }
+        });
+
+        const outRef = ref(db, "inbox");
+        onValue(outRef, (snap) => {
+          const outbox = [];
+          if (snap.exists()) {
+            Object.values(snap.val()).forEach(list => {
+              Object.values(list).forEach(msg => {
+                if (msg.from === u.uid) {
+                  outbox.push(msg);
+                }
+              });
+            });
+          }
+          setOutboxMessages(outbox.sort((a, b) => b.time - a.time));
+        });
       } else {
         setUser(null);
       }
     });
-    return () => unsub();
+    return () => {};
   }, []);
 
   const handleImageUpload = async (e) => {
@@ -72,22 +96,21 @@ export default function Profile() {
 
   const handleLogout = async () => {
     await signOut(auth);
-    window.location.href = "/"; // redirect to login
+    window.location.href = "/";
   };
 
   if (!user) return null;
 
   return (
     <div style={container}>
-      {/* Hamburger Menu */}
       <div style={hamburger} onClick={() => setMenuOpen(!menuOpen)}>☰</div>
 
-      {/* Slide Menu */}
       {menuOpen && (
         <div style={menu}>
-          <p onClick={() => alert("Coming soon")} style={menuItem}>📥 Inbox ({inboxCount})</p>
-          <p onClick={() => alert("Preferences coming soon")} style={menuItem}>⚙️ Preferences</p>
-          <p onClick={() => alert("Dark/Light toggle")} style={menuItem}>🌓 Theme</p>
+          <p style={menuItem}>📥 Inbox ({inboxMessages.length})</p>
+          <p style={menuItem}>📤 Outbox ({outboxMessages.length})</p>
+          <p onClick={() => alert("Preferences soon")} style={menuItem}>⚙️ Preferences</p>
+          <p onClick={() => alert("Theme soon")} style={menuItem}>🌓 Theme</p>
           <p onClick={handleLogout} style={{ ...menuItem, color: "#f44336" }}>🚪 Logout</p>
         </div>
       )}
@@ -112,7 +135,6 @@ export default function Profile() {
         <p style={tagline}>{profileData.email}</p>
         <button style={button} onClick={handleNameChange}>✏️ Edit Name</button>
 
-        {/* User Posted Images */}
         <h3 style={{ marginTop: 30 }}>📸 Your Posts</h3>
         <div style={gallery}>
           {postedImages.length ? (
@@ -122,6 +144,28 @@ export default function Profile() {
           ) : (
             <p>No posts yet.</p>
           )}
+        </div>
+
+        <h3 style={{ marginTop: 30 }}>📨 Inbox</h3>
+        <div style={messageBox}>
+          {inboxMessages.length ? inboxMessages.map((msg, i) => (
+            <div key={i} style={msgCard}>
+              <strong>{msg.name}</strong>
+              <p>{msg.text}</p>
+              <small>{new Date(msg.time).toLocaleString()}</small>
+            </div>
+          )) : <p>No inbox messages.</p>}
+        </div>
+
+        <h3 style={{ marginTop: 30 }}>📤 Outbox</h3>
+        <div style={messageBox}>
+          {outboxMessages.length ? outboxMessages.map((msg, i) => (
+            <div key={i} style={msgCard}>
+              <strong>To: {msg.toName || "Unknown"}</strong>
+              <p>{msg.text}</p>
+              <small>{new Date(msg.time).toLocaleString()}</small>
+            </div>
+          )) : <p>No sent messages.</p>}
         </div>
       </div>
     </div>
@@ -222,4 +266,17 @@ const postImg = {
   height: "100px",
   objectFit: "cover",
   borderRadius: "10px",
+};
+
+const messageBox = {
+  maxHeight: "200px",
+  overflowY: "auto",
+  textAlign: "left",
+};
+
+const msgCard = {
+  background: "#f0f0f0",
+  padding: "10px",
+  borderRadius: "10px",
+  marginBottom: "10px",
 };
