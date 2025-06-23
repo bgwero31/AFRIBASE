@@ -1,14 +1,11 @@
 import React, { useEffect, useState, useRef } from "react";
 import {
   getAuth,
-  createUserWithEmailAndPassword,
-  signInWithEmailAndPassword,
   signOut,
   onAuthStateChanged,
 } from "firebase/auth";
 import {
   ref,
-  set,
   get,
   child,
   update,
@@ -23,19 +20,10 @@ const imgbbKey = "30df4aa05f1af3b3b58ee8a74639e5cf";
 
 export default function Profile() {
   const [user, setUser] = useState(null);
-  const [profileData, setProfileData] = useState({
-    name: "",
-    email: "",
-    image: "",
-    vip: false,
-    posts: 0,
-    likes: 0,
-    comments: 0,
-  });
-  const [form, setForm] = useState({ email: "", password: "" });
+  const [profileData, setProfileData] = useState({});
   const [uploading, setUploading] = useState(false);
-
-  // Inbox and messaging states
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [postedImages, setPostedImages] = useState([]);
   const [inbox, setInbox] = useState([]);
   const [unreadCount, setUnreadCount] = useState(0);
   const [selectedMsg, setSelectedMsg] = useState(null);
@@ -49,31 +37,14 @@ export default function Profile() {
     audio.current = new Audio("/notify.mp3");
   }, []);
 
-  // Auth and data loading with inbox realtime listener + cleanup
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, async (u) => {
       if (u) {
         setUser(u);
 
-        // Load profile data or create default
-        const snapshot = await get(child(ref(db), `users/${u.uid}`));
-        if (snapshot.exists()) {
-          setProfileData(snapshot.val());
-        } else {
-          const defaultData = {
-            name: "New User",
-            email: u.email,
-            image: "",
-            vip: false,
-            posts: 0,
-            likes: 0,
-            comments: 0,
-          };
-          await set(ref(db, `users/${u.uid}`), defaultData);
-          setProfileData(defaultData);
-        }
+        const userSnap = await get(child(ref(db), `users/${u.uid}`));
+        if (userSnap.exists()) setProfileData(userSnap.val());
 
-        // Load all usernames for mapping
         const allUsersSnap = await get(ref(db, `users`));
         const map = {};
         if (allUsersSnap.exists()) {
@@ -83,7 +54,6 @@ export default function Profile() {
         }
         setUserMap(map);
 
-        // Load products posted by this user for gallery
         const prodSnap = await get(ref(db, `products`));
         const posts = [];
         if (prodSnap.exists()) {
@@ -91,19 +61,16 @@ export default function Profile() {
             if (p.uid === u.uid && p.image) posts.push(p.image);
           });
         }
-        setProfileData((prev) => ({ ...prev, posts: posts.length }));
         setPostedImages(posts);
 
-        // Inbox realtime listener
         inboxRef.current = ref(db, `inbox/${u.uid}`);
         let firstLoad = true;
-        const unsubscribeInbox = onValue(inboxRef.current, (snap) => {
+        onValue(inboxRef.current, (snap) => {
           if (snap.exists()) {
             const msgs = Object.entries(snap.val()).map(([id, m]) => ({
               id,
               ...m,
             }));
-            // Sort unread on top, newest first
             const sorted = [
               ...msgs.filter((m) => !m.read).sort((a, b) => b.timestamp - a.timestamp),
               ...msgs.filter((m) => m.read).sort((a, b) => b.timestamp - a.timestamp),
@@ -120,7 +87,6 @@ export default function Profile() {
           }
         });
 
-        // Load outbox messages (sent)
         const allInbox = await get(ref(db, `inbox`));
         const sent = [];
         if (allInbox.exists()) {
@@ -133,11 +99,6 @@ export default function Profile() {
           });
         }
         setOutbox(sent.sort((a, b) => b.timestamp - a.timestamp));
-
-        // Cleanup function to unsubscribe inbox realtime listener
-        return () => {
-          unsubscribeInbox();
-        };
       } else {
         setUser(null);
       }
@@ -146,44 +107,35 @@ export default function Profile() {
     return () => unsub();
   }, []);
 
-  // Uploaded posts images state
-  const [postedImages, setPostedImages] = useState([]);
-
-  // Handle image upload to imgbb
   const handleImageUpload = async (e) => {
     const file = e.target.files[0];
     if (!file || !user) return;
     setUploading(true);
-    try {
-      const formData = new FormData();
-      formData.append("image", file);
-      const res = await fetch(
-        `https://api.imgbb.com/1/upload?key=${imgbbKey}`,
-        { method: "POST", body: formData }
-      );
-      const data = await res.json();
-      if (data && data.data && data.data.url) {
-        const imageUrl = data.data.url;
-        await update(ref(db, `users/${user.uid}`), { image: imageUrl });
-        setProfileData((prev) => ({ ...prev, image: imageUrl }));
-      } else {
-        alert("Image upload failed");
-      }
-    } catch (err) {
-      alert("Upload error: " + err.message);
-    }
+    const formData = new FormData();
+    formData.append("image", file);
+    const res = await fetch(
+      `https://api.imgbb.com/1/upload?key=${imgbbKey}`,
+      { method: "POST", body: formData }
+    );
+    const data = await res.json();
+    const url = data.data.url;
+    await update(ref(db, `users/${user.uid}`), { image: url });
+    setProfileData((prev) => ({ ...prev, image: url }));
     setUploading(false);
   };
 
-  // Handle name change prompt
   const handleNameChange = async () => {
-    const newName = prompt("Enter your name:");
-    if (!newName || !user) return;
-    await update(ref(db, `users/${user.uid}`), { name: newName });
-    setProfileData((prev) => ({ ...prev, name: newName }));
+    const name = prompt("Enter new name:");
+    if (!name || !user) return;
+    await update(ref(db, `users/${user.uid}`), { name });
+    setProfileData((prev) => ({ ...prev, name }));
   };
 
-  // Messaging functions
+  const handleLogout = async () => {
+    await signOut(auth);
+    window.location.href = "/";
+  };
+
   const sendReply = async () => {
     if (!reply || !selectedMsg || !user) return;
     const replyData = {
@@ -211,7 +163,6 @@ export default function Profile() {
     setSelectedMsg(msg);
   };
 
-  // Time ago helper
   const timeAgo = (ts) => {
     const diff = Math.floor((Date.now() - ts) / 1000);
     if (diff < 60) return `${diff}s ago`;
@@ -220,89 +171,15 @@ export default function Profile() {
     return `${Math.floor(diff / 86400)}d ago`;
   };
 
-  // Login handler
-  const handleLogin = async () => {
-    try {
-      await signInWithEmailAndPassword(auth, form.email, form.password);
-    } catch (err) {
-      alert("Login failed: " + err.message);
-    }
-  };
+  if (!user) return null;
 
-  // Signup handler
-  const handleSignup = async () => {
-    try {
-      const res = await createUserWithEmailAndPassword(
-        auth,
-        form.email,
-        form.password
-      );
-      const defaultData = {
-        name: "New User",
-        email: res.user.email,
-        image: "",
-        vip: false,
-        posts: 0,
-        likes: 0,
-        comments: 0,
-      };
-      await set(ref(db, `users/${res.user.uid}`), defaultData);
-    } catch (err) {
-      alert("Signup failed: " + err.message);
-    }
-  };
-
-  // Logout
-  const handleLogout = () => signOut(auth);
-
-  // If not logged in, show login/signup form
-  if (!user) {
-    return (
-      <div style={container}>
-        <div style={card}>
-          <h2>Welcome to Afribase</h2>
-          <input
-            type="email"
-            placeholder="Email"
-            value={form.email}
-            onChange={(e) => setForm({ ...form, email: e.target.value })}
-            style={input}
-          />
-          <input
-            type="password"
-            placeholder="Password"
-            value={form.password}
-            onChange={(e) => setForm({ ...form, password: e.target.value })}
-            style={input}
-          />
-          <button style={button} onClick={handleLogin}>
-            Sign In
-          </button>
-          <button
-            style={{ ...button, background: "#0077cc" }}
-            onClick={handleSignup}
-          >
-            Sign Up
-          </button>
-        </div>
-      </div>
-    );
-  }
-
-  // Logged in profile UI with inbox and posts gallery
   return (
     <div style={container}>
-      {/* Inbox badge and menu toggle */}
-      <div
-        style={hamburger}
-        onClick={() => setMenuOpen((open) => !open)}
-        title="Toggle Inbox"
-      >
+      <div style={hamburger} onClick={() => setMenuOpen(!menuOpen)}>
         ☰
         {unreadCount > 0 && <span style={badge}>{unreadCount}</span>}
       </div>
 
-      {/* Inbox menu */}
       {menuOpen && (
         <div style={menu}>
           <p style={menuTitle}>📥 Inbox</p>
@@ -314,11 +191,9 @@ export default function Profile() {
                 style={{
                   ...menuItem,
                   fontWeight: m.read ? "normal" : "bold",
-                  cursor: "pointer",
                 }}
               >
-                <strong>{m.fromName}</strong>: {m.message.slice(0, 25)}... (
-                {timeAgo(m.timestamp)})
+                <strong>{m.fromName}</strong>: {m.message.slice(0, 25)}... ({timeAgo(m.timestamp)})
               </p>
             ))
           ) : (
@@ -329,27 +204,21 @@ export default function Profile() {
           {outbox.length ? (
             outbox.map((m, i) => (
               <p key={i} style={menuItem}>
-                To <strong>{userMap[m.to]}</strong>: {m.message.slice(0, 25)}... (
-                {timeAgo(m.timestamp)})
+                To <strong>{userMap[m.to]}</strong>: {m.message.slice(0, 25)}... ({timeAgo(m.timestamp)})
               </p>
             ))
           ) : (
             <p style={menuItem}>No sent messages</p>
           )}
           <hr />
-          <p style={menuItem} onClick={() => alert("Preferences coming")}>
-            ⚙️ Preferences
-          </p>
-          <p style={menuItem} onClick={() => alert("Dark mode soon")}>
-            🌓 Theme
-          </p>
+          <p style={menuItem}>⚙️ Preferences</p>
+          <p style={menuItem}>🌓 Theme</p>
           <p style={{ ...menuItem, color: "red" }} onClick={handleLogout}>
             🚪 Logout
           </p>
         </div>
       )}
 
-      {/* Message modal */}
       {selectedMsg && (
         <div style={modalOverlay} onClick={() => setSelectedMsg(null)}>
           <div style={modal} onClick={(e) => e.stopPropagation()}>
@@ -364,31 +233,19 @@ export default function Profile() {
               onChange={(e) => setReply(e.target.value)}
               placeholder="Reply..."
             />
-            <button style={button} onClick={sendReply}>
-              Send
-            </button>
-            <button
-              style={{ ...button, background: "#f44336" }}
-              onClick={deleteMessage}
-            >
-              Delete
-            </button>
+            <button style={button} onClick={sendReply}>Send</button>
+            <button style={{ ...button, background: "#f44336" }} onClick={deleteMessage}>Delete</button>
             <button onClick={() => setSelectedMsg(null)}>Close</button>
           </div>
         </div>
       )}
 
-      {/* Profile Card */}
       <div style={card}>
-        <div
-          style={avatar}
-          onClick={() => document.getElementById("fileInput").click()}
-          title="Click to change profile image"
-        >
+        <div style={avatar} onClick={() => document.getElementById("fileInput").click()}>
           {profileData.image ? (
             <img
               src={profileData.image}
-              alt="Profile"
+              alt="profile"
               style={{ width: "100%", height: "100%", borderRadius: "50%" }}
             />
           ) : (
@@ -402,157 +259,41 @@ export default function Profile() {
           onChange={handleImageUpload}
           style={{ display: "none" }}
         />
-        {uploading && <p>Uploading...</p>}
-
         <h2 style={name}>{profileData.name}</h2>
         <p style={tagline}>{profileData.email}</p>
-
-        {profileData.vip && <div style={vipBadge}>🌟 VIP</div>}
-
+        {uploading && <p>Uploading...</p>}
+        <button style={button} onClick={handleNameChange}>✏️ Edit Name</button>
         <div style={stats}>
-          <div>
-            <strong>{profileData.posts || 0}</strong>
-            <p>Posts</p>
-          </div>
-          <div>
-            <strong>{profileData.likes || 0}</strong>
-            <p>Likes</p>
-          </div>
-          <div>
-            <strong>{profileData.comments || 0}</strong>
-            <p>Comments</p>
-          </div>
+          <div><strong>{profileData.posts || 0}</strong><p>Posts</p></div>
+          <div><strong>{profileData.likes || 0}</strong><p>Likes</p></div>
+          <div><strong>{profileData.comments || 0}</strong><p>Comments</p></div>
         </div>
-
         <h3>📸 Your Posts</h3>
         <div style={gallery}>
-          {postedImages.length ? (
-            postedImages.map((img, i) => (
-              <img key={i} src={img} alt="post" style={postImg} />
-            ))
-          ) : (
-            <p>No posts yet</p>
-          )}
+          {postedImages.length ? postedImages.map((img, i) => (
+            <img key={i} src={img} alt="post" style={postImg} />
+          )) : <p>No posts yet</p>}
         </div>
-
-        <button style={button} onClick={handleNameChange}>
-          ✏️ Edit Name
-        </button>
-        <button style={{ ...button, background: "#f44336" }} onClick={handleLogout}>
-          🚪 Sign Out
-        </button>
       </div>
     </div>
   );
 }
 
 // Styles
-const container = {
-  position: "relative",
-  padding: 20,
-  background: "#f5f5f5",
-  minHeight: "100vh",
-  display: "flex",
-  justifyContent: "center",
-  alignItems: "center",
-  fontFamily: "'Poppins', sans-serif",
-};
-const hamburger = {
-  position: "absolute",
-  top: 20,
-  left: 20,
-  fontSize: 26,
-  cursor: "pointer",
-  zIndex: 10,
-};
-const badge = {
-  background: "red",
-  color: "#fff",
-  borderRadius: "50%",
-  padding: "2px 6px",
-  fontSize: "12px",
-  marginLeft: "4px",
-};
-const menu = {
-  position: "absolute",
-  top: 0,
-  left: 0,
-  width: "80%",
-  height: "100vh",
-  background: "#fff",
-  boxShadow: "4px 0 12px rgba(0,0,0,0.1)",
-  padding: 20,
-  zIndex: 9,
-  overflowY: "auto",
-};
-const menuItem = {
-  fontSize: "15px",
-  margin: "8px 0",
-  cursor: "pointer",
-  borderBottom: "1px solid #eee",
-  padding: 5,
-};
+const container = { position: "relative", padding: 20, background: "#f0f0f0", minHeight: "100vh", display: "flex", justifyContent: "center", alignItems: "center" };
+const hamburger = { position: "absolute", top: 20, left: 20, fontSize: 26, cursor: "pointer", zIndex: 10 };
+const badge = { background: "red", color: "#fff", borderRadius: "50%", padding: "2px 6px", fontSize: "12px", marginLeft: "4px" };
+const menu = { position: "absolute", top: 0, left: 0, width: "80%", height: "100vh", background: "#fff", boxShadow: "4px 0 12px rgba(0,0,0,0.1)", padding: 20, zIndex: 9, overflowY: "auto" };
+const menuItem = { fontSize: "15px", margin: "8px 0", cursor: "pointer", borderBottom: "1px solid #eee", padding: 5 };
 const menuTitle = { fontWeight: "bold", fontSize: 16, marginBottom: 5 };
-const modalOverlay = {
-  position: "fixed",
-  top: 0,
-  left: 0,
-  right: 0,
-  bottom: 0,
-  background: "rgba(0,0,0,0.4)",
-  display: "flex",
-  justifyContent: "center",
-  alignItems: "center",
-  zIndex: 100,
-};
-const modal = {
-  background: "#fff",
-  padding: "20px",
-  borderRadius: "10px",
-  width: "90%",
-  maxWidth: "400px",
-  textAlign: "center",
-};
-const card = {
-  background: "#fff",
-  borderRadius: "20px",
-  padding: "30px",
-  boxShadow: "0 4px 12px rgba(0,0,0,0.1)",
-  textAlign: "center",
-  maxWidth: "350px",
-  width: "100%",
-};
-const avatar = {
-  width: "100px",
-  height: "100px",
-  borderRadius: "50%",
-  background: "#ddd",
-  margin: "0 auto 20px",
-  overflow: "hidden",
-  cursor: "pointer",
-};
-const name = {
-  fontSize: "24px",
-  fontWeight: "700",
-  margin: "10px 0 5px",
-};
-const tagline = {
-  fontSize: "14px",
-  color: "#777",
-  marginBottom: "15px",
-};
-const vipBadge = {
-  background: "#4caf50",
-  color: "#fff",
-  padding: "6px 14px",
-  borderRadius: "30px",
-  fontSize: "12px",
-  fontWeight: "600",
-  marginBottom: "20px",
-  display: "inline-block",
-};
-const stats = {
-  display: "flex",
-  justifyContent: "space-around",
-  marginBottom: "20px",
-  fontSize: "14px",
+const modalOverlay = { position: "fixed", top: 0, left: 0, right: 0, bottom: 0, background: "rgba(0,0,0,0.4)", display: "flex", justifyContent: "center", alignItems: "center", zIndex: 100 };
+const modal = { background: "#fff", padding: "20px", borderRadius: "10px", width: "90%", maxWidth: "400px", textAlign: "center" };
+const card = { background: "#fff", borderRadius: "20px", padding: "30px", boxShadow: "0 4px 12px rgba(0,0,0,0.1)", textAlign: "center", maxWidth: "350px", width: "100%" };
+const avatar = { width: "100px", height: "100px", borderRadius: "50%", background: "#ddd", margin: "0 auto 20px", overflow: "hidden", cursor: "pointer" };
+const name = { fontSize: "24px", fontWeight: "700", margin: "10px 0 5px" };
+const tagline = { fontSize: "14px", color: "#777", marginBottom: "15px" };
+const button = { background: "#00cc88", color: "#fff", padding: "10px 20px", border: "none", borderRadius: "10px", fontWeight: "600", cursor: "pointer", marginTop: "10px" };
+const stats = { display: "flex", justifyContent: "space-around", marginBottom: "20px", fontSize: "14px", color: "#555" };
+const gallery = { display: "flex", flexWrap: "wrap", gap: "10px", justifyContent: "center", marginTop: "10px" };
+const postImg = { width: "100px", height: "100px", objectFit: "cover", borderRadius: "10px" };
+const input = { width: "90%", padding: "10px", borderRadius: "8px", border: "1px solid #ccc", marginBottom: "10px" };
