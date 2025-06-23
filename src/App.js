@@ -8,6 +8,7 @@ import Chat from "./pages/Chat";
 import Market from "./pages/Market";
 import Profile from "./pages/Profile";
 import Login from "./pages/Login";
+import Inbox from "./pages/Inbox"; // ✅ Include if you have Inbox.js
 
 function App() {
   const [user, setUser] = useState(null);
@@ -25,7 +26,7 @@ function App() {
   if (checking) {
     return (
       <div style={{ display: "flex", height: "100vh", justifyContent: "center", alignItems: "center" }}>
-        <p>Loading...</p>
+        <p style={{ fontSize: 18, fontWeight: "bold" }}>Checking login...</p>
       </div>
     );
   }
@@ -34,19 +35,19 @@ function App() {
     <Router>
       <Routes>
         {!user ? (
-          // Not logged in: Only show login
           <>
             <Route path="/" element={<Login />} />
-            <Route path="*" element={<Navigate to="/" />} />
+            <Route path="*" element={<Navigate to="/" replace />} />
           </>
         ) : (
-          // Logged in: show the full app
           <>
             <Route path="/" element={<Home />} />
             <Route path="/chat" element={<Chat />} />
             <Route path="/market" element={<Market />} />
             <Route path="/profile" element={<Profile />} />
-            <Route path="/login" element={<Navigate to="/" />} />
+            <Route path="/inbox" element={<Inbox />} /> {/* ✅ Optional */}
+            <Route path="/login" element={<Navigate to="/" replace />} />
+            <Route path="*" element={<Navigate to="/" replace />} />
           </>
         )}
       </Routes>
