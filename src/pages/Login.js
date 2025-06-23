@@ -1,9 +1,8 @@
-// src/pages/Login.js
 import React, { useState } from "react";
 import {
   getAuth,
   createUserWithEmailAndPassword,
-  signInWithEmailAndPassword
+  signInWithEmailAndPassword,
 } from "firebase/auth";
 import { useNavigate } from "react-router-dom";
 import { ref, set } from "firebase/database";
@@ -34,7 +33,7 @@ export default function Login() {
       } else {
         await signInWithEmailAndPassword(auth, form.email, form.password);
       }
-      navigate("/"); // Redirect to Home after login/signup
+      navigate("/"); // ✅ Go to Home.js after login/signup
     } catch (err) {
       alert(err.message);
     }
@@ -78,7 +77,7 @@ export default function Login() {
   );
 }
 
-// Styles
+// 🔥 Inline styles
 const container = {
   minHeight: "100vh",
   backgroundSize: "cover",
