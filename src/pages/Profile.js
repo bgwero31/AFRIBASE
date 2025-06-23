@@ -188,10 +188,7 @@ export default function Profile() {
               <p
                 key={m.id}
                 onClick={() => markAsRead(m)}
-                style={{
-                  ...menuItem,
-                  fontWeight: m.read ? "normal" : "bold",
-                }}
+                style={{ ...menuItem, fontWeight: m.read ? "normal" : "bold" }}
               >
                 <strong>{m.fromName}</strong>: {m.message.slice(0, 25)}... ({timeAgo(m.timestamp)})
               </p>
@@ -211,11 +208,9 @@ export default function Profile() {
             <p style={menuItem}>No sent messages</p>
           )}
           <hr />
-          <p style={menuItem}>⚙️ Preferences</p>
-          <p style={menuItem}>🌓 Theme</p>
-          <p style={{ ...menuItem, color: "red" }} onClick={handleLogout}>
-            🚪 Logout
-          </p>
+          <p style={menuItem} onClick={() => alert("Preferences coming")}>⚙️ Preferences</p>
+          <p style={menuItem} onClick={() => alert("Dark mode soon")}>🌓 Theme</p>
+          <p style={{ ...menuItem, color: "red" }} onClick={handleLogout}>🚪 Logout</p>
         </div>
       )}
 
@@ -223,9 +218,7 @@ export default function Profile() {
         <div style={modalOverlay} onClick={() => setSelectedMsg(null)}>
           <div style={modal} onClick={(e) => e.stopPropagation()}>
             <h3>📨 Message</h3>
-            <p>
-              <strong>From:</strong> {selectedMsg.fromName}
-            </p>
+            <p><strong>From:</strong> {selectedMsg.fromName}</p>
             <p>{selectedMsg.message}</p>
             <input
               style={input}
