@@ -10,7 +10,7 @@ const firebaseConfig = {
   authDomain: "neurobet-ai.firebaseapp.com",
   databaseURL: "https://neurobet-ai-default-rtdb.firebaseio.com",
   projectId: "neurobet-ai",
-  storageBucket: "neurobet-ai.appspot.com", // <-- keep this one
+  storageBucket: "neurobet-ai.firebase.app", // <-- keep this one
   messagingSenderId: "793175611155",
   appId: "1:793175611155:web:10d91cb8d4fca30f6eece6",
   measurementId: "G-RPZZ9MPQTJ"
