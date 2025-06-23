@@ -1,19 +1,27 @@
 import React, { useEffect, useState } from "react";
 import { db } from "../firebase";
 import { ref as dbRef, onValue } from "firebase/database";
-import { auth } from "../firebase";
 
 export default function Inbox() {
   const [messages, setMessages] = useState([]);
-  const user = auth.currentUser;
+  const [onlyImages, setOnlyImages] = useState(false);
+  const [searchUser, setSearchUser] = useState("");
+  const [newMessageCount, setNewMessageCount] = useState(0);
 
   useEffect(() => {
     const chatRef = dbRef(db, "messages");
+
+    let firstLoad = true;
     const unsubscribe = onValue(chatRef, (snapshot) => {
       const data = snapshot.val();
       if (data) {
         const msgs = Object.entries(data).map(([id, msg]) => ({ id, ...msg }));
         setMessages(msgs.reverse());
+
+        if (!firstLoad) {
+          setNewMessageCount((prev) => prev + 1);
+        }
+        firstLoad = false;
       } else {
         setMessages([]);
       }
@@ -22,11 +30,41 @@ export default function Inbox() {
     return () => unsubscribe();
   }, []);
 
+  const filteredMessages = messages.filter((msg) => {
+    const matchesImage = onlyImages ? msg.type === "image" : true;
+    const matchesUser = msg.name?.toLowerCase().includes(searchUser.toLowerCase());
+    return matchesImage && matchesUser;
+  });
+
   return (
     <div style={inboxWrapper}>
-      <h2 style={header}>📥 Inbox</h2>
+      <div style={headerRow}>
+        <h2 style={header}>📥 Inbox</h2>
+        {newMessageCount > 0 && (
+          <span style={badge}>{newMessageCount}</span>
+        )}
+      </div>
 
-      {messages.map((msg) => (
+      <div style={filterBar}>
+        <input
+          type="text"
+          placeholder="Search by user name..."
+          value={searchUser}
+          onChange={(e) => setSearchUser(e.target.value)}
+          style={searchInput}
+        />
+
+        <label style={toggleLabel}>
+          <input
+            type="checkbox"
+            checked={onlyImages}
+            onChange={() => setOnlyImages(!onlyImages)}
+          />
+          Only Images
+        </label>
+      </div>
+
+      {filteredMessages.map((msg) => (
         <div key={msg.id} style={card}>
           <div style={topRow}>
             {msg.avatar && (
@@ -58,6 +96,7 @@ export default function Inbox() {
   );
 }
 
+// 🔧 STYLES
 const inboxWrapper = {
   padding: "16px",
   backgroundColor: "#121212",
@@ -66,11 +105,48 @@ const inboxWrapper = {
   fontFamily: "Poppins, sans-serif"
 };
 
+const headerRow = {
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "space-between"
+};
+
 const header = {
-  marginBottom: "16px",
   fontSize: "24px",
   fontWeight: "bold",
   color: "#00ffcc"
+};
+
+const badge = {
+  backgroundColor: "#0f0",
+  color: "#000",
+  fontWeight: "bold",
+  borderRadius: "50%",
+  padding: "6px 10px",
+  fontSize: "12px"
+};
+
+const filterBar = {
+  display: "flex",
+  justifyContent: "space-between",
+  alignItems: "center",
+  margin: "16px 0"
+};
+
+const searchInput = {
+  padding: "8px",
+  borderRadius: "6px",
+  border: "none",
+  fontSize: "14px",
+  flex: 1,
+  marginRight: "10px"
+};
+
+const toggleLabel = {
+  fontSize: "14px",
+  display: "flex",
+  alignItems: "center",
+  gap: "6px"
 };
 
 const card = {
