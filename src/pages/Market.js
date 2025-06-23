@@ -1,8 +1,19 @@
 import React, { useState, useEffect } from "react";
 import { db, storage } from "../firebase";
-import { ref, push, onValue, update, get } from "firebase/database";
-import { ref as storageRef, uploadBytes, getDownloadURL } from "firebase/storage";
-import SendPrivateMessage from "../components/SendPrivateMessage"; // ✅ Import modal
+import {
+  ref,
+  push,
+  onValue,
+  update,
+  set,
+  remove,
+} from "firebase/database";
+import {
+  ref as storageRef,
+  uploadBytes,
+  getDownloadURL,
+} from "firebase/storage";
+import SendPrivateMessage from "../components/SendPrivateMessage";
 
 export default function Marketplace() {
   const [products, setProducts] = useState([]);
@@ -15,9 +26,8 @@ export default function Marketplace() {
   const [darkMode, setDarkMode] = useState(true);
   const [modal, setModal] = useState(null);
   const [commentInputs, setCommentInputs] = useState({});
-  const [userVotes, setUserVotes] = useState({}); // track like/dislike toggles
+  const [userLikes, setUserLikes] = useState({}); // Track liked/disliked
 
-  // For private messaging modal
   const [showModal, setShowModal] = useState(false);
   const [selectedUser, setSelectedUser] = useState({});
 
@@ -31,7 +41,12 @@ export default function Marketplace() {
           ...val,
           likes: val.likes || 0,
           dislikes: val.dislikes || 0,
-          comments: val.comments ? Object.values(val.comments) : [],
+          comments: val.comments
+            ? Object.entries(val.comments).map(([cid, cval]) => ({
+                id: cid,
+                ...cval,
+              }))
+            : [],
         }));
         setProducts(items.reverse());
       }
@@ -44,8 +59,8 @@ export default function Marketplace() {
 
     try {
       const imgRef = storageRef(storage, `marketplace/${Date.now()}-${image.name}`);
-      await uploadBytes(imgRef, image);
-      const url = await getDownloadURL(imgRef);
+      const snapshot = await uploadBytes(imgRef, image);
+      const url = await getDownloadURL(snapshot.ref);
 
       await push(ref(db, "products"), {
         title,
@@ -56,7 +71,7 @@ export default function Marketplace() {
         time: new Date().toLocaleString(),
         likes: 0,
         dislikes: 0,
-        ownerUID: null, // Add dynamically if user login implemented
+        ownerUID: null,
         ownerName: null,
       });
 
@@ -65,53 +80,35 @@ export default function Marketplace() {
       setPrice("");
       setCategory("");
       setImage(null);
+      alert("✅ Product posted!");
     } catch (err) {
-      alert("Error uploading product: " + err.message);
+      console.error("Upload error:", err);
+      alert("Failed to upload: " + err.message);
     }
   };
 
-  // Toggle like/dislike: click to add, click again to remove
-  const handleLike = async (id, delta) => {
+  const handleLike = (id, delta) => {
     const field = delta > 0 ? "likes" : "dislikes";
-    const oppositeField = delta > 0 ? "dislikes" : "likes";
-    const productRef = ref(db, `products/${id}`);
+    const key = `${id}-${field}`;
 
-    try {
-      const snapshot = await get(productRef);
-      if (!snapshot.exists()) return;
-      const product = snapshot.val();
+    const alreadyClicked = userLikes[key];
+    const newCount =
+      products.find((p) => p.id === id)[field] + (alreadyClicked ? -1 : 1);
 
-      let likes = product.likes || 0;
-      let dislikes = product.dislikes || 0;
+    update(ref(db, `products/${id}`), {
+      [field]: newCount,
+    });
 
-      const currentVote = userVotes[id]; // "like", "dislike", or undefined
-
-      if (currentVote === field) {
-        // Undo current vote
-        if (field === "likes") likes = Math.max(0, likes - 1);
-        else dislikes = Math.max(0, dislikes - 1);
-        setUserVotes({ ...userVotes, [id]: null });
-      } else {
-        // Remove opposite vote if exists
-        if (currentVote === oppositeField) {
-          if (oppositeField === "likes") likes = Math.max(0, likes - 1);
-          else dislikes = Math.max(0, dislikes - 1);
-        }
-        // Add current vote
-        if (field === "likes") likes += 1;
-        else dislikes += 1;
-        setUserVotes({ ...userVotes, [id]: field });
-      }
-
-      await update(productRef, { likes, dislikes });
-    } catch (err) {
-      console.error("Error updating likes/dislikes:", err);
-    }
+    setUserLikes((prev) => ({
+      ...prev,
+      [key]: !alreadyClicked,
+    }));
   };
 
   const handleComment = async (id) => {
     const text = commentInputs[id];
     if (!text) return;
+
     try {
       await push(ref(db, `products/${id}/comments`), {
         text,
@@ -130,7 +127,6 @@ export default function Marketplace() {
   );
 
   const isDark = darkMode;
-
   return (
     <div
       style={{
@@ -139,7 +135,10 @@ export default function Marketplace() {
         color: isDark ? "#fff" : "#000",
       }}
     >
-      <button style={toggleBtnStyle(isDark)} onClick={() => setDarkMode(!darkMode)}>
+      <button
+        style={toggleBtnStyle(isDark)}
+        onClick={() => setDarkMode(!darkMode)}
+      >
         {isDark ? "☀️" : "🌙"}
       </button>
 
@@ -149,7 +148,10 @@ export default function Marketplace() {
             {w.split("").map((c, j) => (
               <span
                 key={j}
-                style={{ ...letterStyle, animationDelay: `${(i + j) * 0.05}s` }}
+                style={{
+                  ...letterStyle,
+                  animationDelay: `${(i + j) * 0.05}s`,
+                }}
               >
                 {c}
               </span>
@@ -159,7 +161,11 @@ export default function Marketplace() {
       </h2>
 
       <input
-        style={{ ...searchInput, background: isDark ? "#1f1f1f" : "#fff", color: isDark ? "#fff" : "#000" }}
+        style={{
+          ...searchInput,
+          background: isDark ? "#1f1f1f" : "#fff",
+          color: isDark ? "#fff" : "#000",
+        }}
         placeholder="🔍 Search products..."
         value={search}
         onChange={(e) => setSearch(e.target.value)}
@@ -205,26 +211,38 @@ export default function Marketplace() {
       <div style={productGrid}>
         {filtered.map((p) => (
           <div key={p.id} style={{ ...cardStyle(isDark) }}>
-            <img src={p.image} style={imgStyle} onClick={() => setModal(p)} />
+            <img
+              src={p.image}
+              style={imgStyle}
+              onClick={() => setModal(p)}
+            />
             <h3>{p.title}</h3>
-            <p style={{ flexGrow: 1 }}>{p.description}</p>
+            <p>{p.description}</p>
             <strong style={{ color: "#00ffcc" }}>{p.price}</strong>
             <div style={categoryStyle}>📂 {p.category}</div>
-            <div style={{ fontSize: "12px", color: isDark ? "#aaa" : "#555", marginBottom: "8px" }}>
+            <div style={{ fontSize: "12px", marginBottom: 8 }}>
               {p.time}
             </div>
 
             <div style={socialRowStyle}>
               <div>
-                <span onClick={() => handleLike(p.id, 1)} style={emojiBtnStyle}>
+                <span
+                  onClick={() => handleLike(p.id, 1)}
+                  style={emojiBtnStyle}
+                >
                   👍 {p.likes}
                 </span>
-                <span onClick={() => handleLike(p.id, -1)} style={emojiBtnStyle}>
+                <span
+                  onClick={() => handleLike(p.id, -1)}
+                  style={emojiBtnStyle}
+                >
                   👎 {p.dislikes}
                 </span>
               </div>
               <a
-                href={`https://wa.me/?text=Hi I'm interested in your ${encodeURIComponent(p.title)}`}
+                href={`https://wa.me/?text=Hi I'm interested in your ${encodeURIComponent(
+                  p.title
+                )}`}
                 target="_blank"
                 rel="noopener noreferrer"
                 style={waBtnStyle}
@@ -237,19 +255,37 @@ export default function Marketplace() {
               style={commentStyle(isDark)}
               placeholder="💬 Add comment..."
               value={commentInputs[p.id] || ""}
-              onChange={(e) => setCommentInputs({ ...commentInputs, [p.id]: e.target.value })}
+              onChange={(e) =>
+                setCommentInputs({ ...commentInputs, [p.id]: e.target.value })
+              }
             />
             <button style={buttonStyle} onClick={() => handleComment(p.id)}>
               Post
             </button>
 
-            {/* Chat Seller Button */}
+            <div style={{ marginTop: 10 }}>
+              {p.comments.map((c, i) => (
+                <div
+                  key={i}
+                  style={{
+                    background: isDark ? "#333" : "#eee",
+                    padding: "6px 10px",
+                    borderRadius: 6,
+                    fontSize: 14,
+                    marginBottom: 4,
+                  }}
+                >
+                  <strong>🗣️</strong> {c.text}{" "}
+                  <span style={{ fontSize: 10, color: "#999" }}>
+                    ({c.time})
+                  </span>
+                </div>
+              ))}
+            </div>
+
             <button
               onClick={() => {
-                setSelectedUser({
-                  uid: p.ownerUID,
-                  name: p.ownerName,
-                });
+                setSelectedUser({ uid: p.ownerUID, name: p.ownerName });
                 setShowModal(true);
               }}
               style={{
@@ -268,7 +304,6 @@ export default function Marketplace() {
         ))}
       </div>
 
-      {/* Product modal */}
       {modal && (
         <div style={modalOverlay} onClick={() => setModal(null)}>
           <div style={modalContent}>
@@ -278,26 +313,27 @@ export default function Marketplace() {
             <p>📂 {modal.category}</p>
             <p style={{ color: "#00ffcc", fontWeight: "bold" }}>{modal.price}</p>
             <p style={{ fontSize: "12px", color: "#aaa" }}>{modal.time}</p>
-            <a href={`https://wa.me/?text=Hi I'm interested`} style={waBtnStyle}>
+            <a
+              href={`https://wa.me/?text=Hi I'm interested`}
+              style={waBtnStyle}
+            >
               💬 WhatsApp
             </a>
           </div>
         </div>
       )}
 
-      {/* SendPrivateMessage Modal */}
       {showModal && (
         <SendPrivateMessage
           recipientUID={selectedUser.uid}
           recipientName={selectedUser.name}
           onClose={() => setShowModal(false)}
-          productId={null} // optional if no product context
+          productId={null}
         />
       )}
     </div>
   );
-}
-
+        }
 // === Styles (same as before) ...
 const toggleBtnStyle = (isDark) => ({
   position: "absolute",
