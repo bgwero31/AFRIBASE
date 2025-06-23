@@ -2,6 +2,7 @@ import React, { useState, useEffect } from "react";
 import { db, storage } from "../firebase";
 import { ref, push, onValue, update } from "firebase/database";
 import { ref as storageRef, uploadBytes, getDownloadURL } from "firebase/storage";
+import SendPrivateMessage from "../components/SendPrivateMessage";
 
 export default function Marketplace() {
   const [products, setProducts] = useState([]);
