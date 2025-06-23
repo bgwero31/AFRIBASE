@@ -34,7 +34,7 @@ export default function Login() {
       } else {
         await signInWithEmailAndPassword(auth, form.email, form.password);
       }
-      navigate("/profile");
+      navigate("/"); // Redirect to Home after login/signup
     } catch (err) {
       alert(err.message);
     }
