@@ -1,167 +1,245 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import {
   getAuth,
   createUserWithEmailAndPassword,
   signInWithEmailAndPassword,
+  signOut,
+  onAuthStateChanged
 } from "firebase/auth";
-import { useNavigate } from "react-router-dom";
-import { ref, set } from "firebase/database";
+import { ref, set, get, child, update } from "firebase/database";
 import { db } from "../firebase";
 
 const auth = getAuth();
+const imgbbKey = "30df4aa05f1af3b3b58ee8a74639e5cf";
 
-export default function Login() {
-  const navigate = useNavigate();
-  const [isSignup, setIsSignup] = useState(false);
+export default function Profile() {
+  const [user, setUser] = useState(null);
+  const [profileData, setProfileData] = useState({
+    name: "",
+    email: "",
+    image: "",
+    vip: false,
+    posts: 0,
+    likes: 0,
+    comments: 0,
+  });
   const [form, setForm] = useState({ email: "", password: "" });
-  const [loading, setLoading] = useState(false);
+  const [uploading, setUploading] = useState(false);
 
-  const handleAuth = async () => {
-    setLoading(true);
-    try {
-      if (isSignup) {
-        const res = await createUserWithEmailAndPassword(auth, form.email, form.password);
-        await set(ref(db, `users/${res.user.uid}`), {
-          name: "New User",
-          email: res.user.email,
-          image: "",
-          vip: false,
-          posts: 0,
-          likes: 0,
-          comments: 0,
-        });
+  useEffect(() => {
+    const unsub = onAuthStateChanged(auth, async (u) => {
+      if (u) {
+        setUser(u);
+        const snapshot = await get(child(ref(db), `users/${u.uid}`));
+        if (snapshot.exists()) {
+          setProfileData(snapshot.val());
+        } else {
+          const defaultData = {
+            name: "New User",
+            email: u.email,
+            image: "",
+            vip: false,
+            posts: 0,
+            likes: 0,
+            comments: 0,
+          };
+          await set(ref(db, `users/${u.uid}`), defaultData);
+          setProfileData(defaultData);
+        }
       } else {
-        await signInWithEmailAndPassword(auth, form.email, form.password);
+        setUser(null);
       }
-      navigate("/"); // ✅ Go to Home.js after login/signup
+    });
+    return () => unsub();
+  }, []);
+
+  const handleLogin = async () => {
+    try {
+      await signInWithEmailAndPassword(auth, form.email, form.password);
     } catch (err) {
-      alert(err.message);
+      alert("Login failed: " + err.message);
     }
-    setLoading(false);
   };
 
-  const bgImage = "/assets/IMG-20250620-WA0005.jpg";
+  const handleSignup = async () => {
+    try {
+      const res = await createUserWithEmailAndPassword(auth, form.email, form.password);
+      const defaultData = {
+        name: "New User",
+        email: res.user.email,
+        image: "",
+        vip: false,
+        posts: 0,
+        likes: 0,
+        comments: 0,
+      };
+      await set(ref(db, `users/${res.user.uid}`), defaultData);
+    } catch (err) {
+      alert("Signup failed: " + err.message);
+    }
+  };
+
+  const handleLogout = () => signOut(auth);
+
+  const handleImageUpload = async (e) => {
+    const file = e.target.files[0];
+    if (!file || !user) return;
+    setUploading(true);
+
+    const formData = new FormData();
+    formData.append("image", file);
+
+    const res = await fetch(`https://api.imgbb.com/1/upload?key=${imgbbKey}`, {
+      method: "POST",
+      body: formData,
+    });
+    const data = await res.json();
+    const imageUrl = data.data.url;
+
+    await update(ref(db, `users/${user.uid}`), { image: imageUrl });
+    setProfileData((prev) => ({ ...prev, image: imageUrl }));
+    setUploading(false);
+  };
+
+  const handleNameChange = async () => {
+    const newName = prompt("Enter your name:");
+    if (!newName || !user) return;
+    await update(ref(db, `users/${user.uid}`), { name: newName });
+    setProfileData((prev) => ({ ...prev, name: newName }));
+  };
+
+  if (!user) {
+    return (
+      <div style={container}>
+        <div style={card}>
+          <h2>Welcome to Afribase</h2>
+          <input
+            type="email"
+            placeholder="Email"
+            value={form.email}
+            onChange={(e) => setForm({ ...form, email: e.target.value })}
+            style={input}
+          />
+          <input
+            type="password"
+            placeholder="Password"
+            value={form.password}
+            onChange={(e) => setForm({ ...form, password: e.target.value })}
+            style={input}
+          />
+          <button style={button} onClick={handleLogin}>Sign In</button>
+          <button style={{ ...button, background: "#0077cc" }} onClick={handleSignup}>Sign Up</button>
+        </div>
+      </div>
+    );
+  }
 
   return (
-    <div style={{ ...container, backgroundImage: `url(${bgImage})` }}>
-      <div style={overlay} />
+    <div style={container}>
       <div style={card}>
-        <h1 style={title}>AFRIBASE</h1>
-        <p style={subtitle}>{isSignup ? "Create your account" : "Welcome back!"}</p>
-        <input
-          type="email"
-          placeholder="Email"
-          value={form.email}
-          onChange={(e) => setForm({ ...form, email: e.target.value })}
-          style={input}
-        />
-        <input
-          type="password"
-          placeholder="Password"
-          value={form.password}
-          onChange={(e) => setForm({ ...form, password: e.target.value })}
-          style={input}
-        />
-        <button onClick={handleAuth} disabled={loading} style={button}>
-          {loading ? "Processing..." : isSignup ? "Sign Up" : "Log In"}
-        </button>
-        <p style={switcher}>
-          {isSignup ? "Already have an account?" : "Don't have an account?"}{" "}
-          <span onClick={() => setIsSignup(!isSignup)} style={link}>
-            {isSignup ? "Log In" : "Sign Up"}
-          </span>
-        </p>
-        <footer style={footer}>© 2025 Afribase. All rights reserved.</footer>
+        <div style={avatar}>
+          {profileData.image ? (
+            <img src={profileData.image} alt="Profile" style={{ width: "100%", height: "100%", borderRadius: "50%" }} />
+          ) : (
+            <p style={{ fontSize: 30, marginTop: 28 }}>👤</p>
+          )}
+        </div>
+        <input type="file" accept="image/*" onChange={handleImageUpload} />
+        {uploading && <p>Uploading...</p>}
+
+        <h2 style={name}>{profileData.name}</h2>
+        <p style={tagline}>{profileData.email}</p>
+
+        {profileData.vip && <div style={badge}>🌟 VIP</div>}
+
+        <div style={stats}>
+          <div><strong>{profileData.posts}</strong><p>Posts</p></div>
+          <div><strong>{profileData.likes}</strong><p>Likes</p></div>
+          <div><strong>{profileData.comments}</strong><p>Comments</p></div>
+        </div>
+
+        <button style={button} onClick={handleNameChange}>Edit Name</button>
+        <button style={{ ...button, background: "#f44336" }} onClick={handleLogout}>Sign Out</button>
       </div>
     </div>
   );
 }
 
-// 🔥 Inline styles
+// Styles
 const container = {
-  minHeight: "100vh",
-  backgroundSize: "cover",
-  backgroundPosition: "center",
   display: "flex",
   justifyContent: "center",
   alignItems: "center",
-  position: "relative",
-  padding: "20px",
-  fontFamily: "Poppins, sans-serif",
-};
-
-const overlay = {
-  position: "absolute",
-  top: 0,
-  left: 0,
-  right: 0,
-  bottom: 0,
-  background: "rgba(0, 0, 0, 0.6)",
-  zIndex: 0,
+  minHeight: "100vh",
+  background: "#f5f5f5",
+  padding: "20px"
 };
 
 const card = {
-  position: "relative",
-  zIndex: 1,
   background: "#fff",
-  padding: "40px 30px",
   borderRadius: "20px",
-  boxShadow: "0 8px 30px rgba(0,0,0,0.2)",
-  maxWidth: "350px",
-  width: "100%",
+  padding: "30px",
+  boxShadow: "0 4px 12px rgba(0,0,0,0.1)",
   textAlign: "center",
+  maxWidth: "350px",
+  width: "100%"
 };
 
-const title = {
-  fontSize: "34px",
-  fontWeight: "800",
-  background: "linear-gradient(to right, #00ffcc, #004040)",
-  WebkitBackgroundClip: "text",
-  WebkitTextFillColor: "transparent",
-  marginBottom: "10px",
+const avatar = {
+  width: "100px",
+  height: "100px",
+  borderRadius: "50%",
+  background: "#ddd",
+  margin: "0 auto 20px",
+  overflow: "hidden"
 };
 
-const subtitle = {
-  fontSize: "16px",
-  color: "#333",
+const name = {
+  fontSize: "24px",
+  fontWeight: "700",
+  margin: "10px 0 5px"
+};
+
+const tagline = {
+  fontSize: "14px",
+  color: "#777",
+  marginBottom: "15px"
+};
+
+const badge = {
+  background: "#ffc107",
+  color: "#000",
+  padding: "6px 14px",
+  borderRadius: "30px",
+  fontSize: "12px",
+  fontWeight: "600",
   marginBottom: "20px",
+  display: "inline-block"
 };
 
-const input = {
-  width: "100%",
-  padding: "12px",
-  borderRadius: "10px",
-  border: "1px solid #ccc",
-  marginBottom: "15px",
-  fontSize: "15px",
+const stats = {
+  display: "flex",
+  justifyContent: "space-around",
+  marginBottom: "20px",
+  fontSize: "14px",
+  color: "#555"
 };
 
 const button = {
-  width: "100%",
-  padding: "12px",
-  borderRadius: "10px",
-  border: "none",
-  background: "linear-gradient(145deg, #00cc88, #009966)",
+  background: "#00cc88",
   color: "#fff",
-  fontSize: "16px",
-  fontWeight: "bold",
-  cursor: "pointer",
-  marginBottom: "10px",
-};
-
-const switcher = {
-  fontSize: "14px",
-  color: "#555",
-};
-
-const link = {
-  color: "#00cc88",
-  cursor: "pointer",
+  padding: "10px 20px",
+  border: "none",
+  borderRadius: "10px",
   fontWeight: "600",
+  cursor: "pointer",
+  marginTop: "10px"
 };
 
-const footer = {
-  marginTop: "30px",
-  fontSize: "12px",
-  color: "#aaa",
+const input = {
+  width: "90%",
+  padding: "10px",
+  borderRadius: "8px",
+  border: "1px solid #ccc",
+  marginBottom: "10px"
 };
