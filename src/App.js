@@ -1,7 +1,8 @@
-// App.js
+// src/App.js
 import React, { useEffect, useState } from "react";
 import { BrowserRouter as Router, Routes, Route, Navigate } from "react-router-dom";
 import { getAuth, onAuthStateChanged } from "firebase/auth";
+
 import Home from "./pages/Home";
 import Chat from "./pages/Chat";
 import Market from "./pages/Market";
@@ -14,17 +15,17 @@ function App() {
 
   useEffect(() => {
     const auth = getAuth();
-    const unsub = onAuthStateChanged(auth, (u) => {
+    const unsubscribe = onAuthStateChanged(auth, (u) => {
       setUser(u);
       setChecking(false);
     });
-    return () => unsub();
+    return () => unsubscribe();
   }, []);
 
   if (checking) {
     return (
       <div style={{ display: "flex", height: "100vh", justifyContent: "center", alignItems: "center" }}>
-        <div className="spinner" />
+        <p>Loading...</p>
       </div>
     );
   }
@@ -33,14 +34,19 @@ function App() {
     <Router>
       <Routes>
         {!user ? (
-          <Route path="*" element={<Login />} />
+          // Not logged in: Only show login
+          <>
+            <Route path="/" element={<Login />} />
+            <Route path="*" element={<Navigate to="/" />} />
+          </>
         ) : (
+          // Logged in: show the full app
           <>
             <Route path="/" element={<Home />} />
             <Route path="/chat" element={<Chat />} />
             <Route path="/market" element={<Market />} />
             <Route path="/profile" element={<Profile />} />
-            <Route path="*" element={<Navigate to="/" />} />
+            <Route path="/login" element={<Navigate to="/" />} />
           </>
         )}
       </Routes>
