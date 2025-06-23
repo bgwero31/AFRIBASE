@@ -1,58 +1,43 @@
-// src/App.js
 import React, { useEffect, useState } from "react";
 import { BrowserRouter as Router, Routes, Route, Navigate } from "react-router-dom";
-import { getAuth, onAuthStateChanged } from "firebase/auth";
-
 import Home from "./pages/Home";
-import Chat from "./pages/Chat";
-import Market from "./pages/Market";
+import Chat from "./pages/Chatroom";
+import Market from "./pages/Marketplace";
 import Profile from "./pages/Profile";
 import Login from "./pages/Login";
-import Inbox from "./pages/Inbox"; // ✅ Include if you have Inbox.js
+import { getAuth, onAuthStateChanged } from "firebase/auth";
 
-function App() {
+export default function App() {
   const [user, setUser] = useState(null);
-  const [checking, setChecking] = useState(true);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const auth = getAuth();
-    const unsubscribe = onAuthStateChanged(auth, (u) => {
-      setUser(u);
-      setChecking(false);
+    const unsubscribe = onAuthStateChanged(getAuth(), (currentUser) => {
+      setUser(currentUser);
+      setLoading(false);
     });
     return () => unsubscribe();
   }, []);
 
-  if (checking) {
-    return (
-      <div style={{ display: "flex", height: "100vh", justifyContent: "center", alignItems: "center" }}>
-        <p style={{ fontSize: 18, fontWeight: "bold" }}>Checking login...</p>
-      </div>
-    );
-  }
+  if (loading) return <div style={{ padding: 40 }}>🔒 Loading...</div>;
 
   return (
     <Router>
       <Routes>
         {!user ? (
-          <>
-            <Route path="/" element={<Login />} />
-            <Route path="*" element={<Navigate to="/" replace />} />
-          </>
+          // 🔐 Show only login/signup page if not logged in
+          <Route path="*" element={<Login />} />
         ) : (
+          // ✅ Show full app only when logged in
           <>
             <Route path="/" element={<Home />} />
             <Route path="/chat" element={<Chat />} />
             <Route path="/market" element={<Market />} />
             <Route path="/profile" element={<Profile />} />
-            <Route path="/inbox" element={<Inbox />} /> {/* ✅ Optional */}
-            <Route path="/login" element={<Navigate to="/" replace />} />
-            <Route path="*" element={<Navigate to="/" replace />} />
+            <Route path="*" element={<Navigate to="/" />} />
           </>
         )}
       </Routes>
     </Router>
   );
 }
-
-export default App;
