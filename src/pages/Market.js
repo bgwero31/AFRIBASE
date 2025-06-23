@@ -2,8 +2,7 @@ import React, { useState, useEffect } from "react";
 import { db, storage } from "../firebase";
 import { ref, push, onValue, update } from "firebase/database";
 import { ref as storageRef, uploadBytes, getDownloadURL } from "firebase/storage";
-import { getAuth } from "firebase/auth";
-import SendPrivateMessage from "../components/SendPrivateMessage";
+import SendPrivateMessage from "../components/SendPrivateMessage"; // ✅ Import modal
 
 export default function Marketplace() {
   const [products, setProducts] = useState([]);
@@ -16,9 +15,10 @@ export default function Marketplace() {
   const [darkMode, setDarkMode] = useState(true);
   const [modal, setModal] = useState(null);
   const [commentInputs, setCommentInputs] = useState({});
+
+  // For private messaging modal
   const [showModal, setShowModal] = useState(false);
-  const [selectedUser, setSelectedUser] = useState(null);
-  const [uploading, setUploading] = useState(false);
+  const [selectedUser, setSelectedUser] = useState({});
 
   useEffect(() => {
     const productRef = ref(db, "products");
@@ -38,51 +38,34 @@ export default function Marketplace() {
   }, []);
 
   const handlePost = async () => {
-    if (!title || !description || !price || !category || !image) return alert("Fill all fields");
-    setUploading(true);
-
-    // Upload image to Firebase Storage
+    if (!title || !description || !price || !category || !image)
+      return alert("Fill all fields");
     const imgRef = storageRef(storage, `marketplace/${Date.now()}-${image.name}`);
-    try {
-      await uploadBytes(imgRef, image);
-      const url = await getDownloadURL(imgRef);
-
-      const auth = getAuth();
-      const user = auth.currentUser;
-      if (!user) return alert("Please login to post products.");
-
-      // Save product with owner info
-      push(ref(db, "products"), {
-        title,
-        description,
-        price,
-        category,
-        image: url,
-        time: new Date().toLocaleString(),
-        likes: 0,
-        dislikes: 0,
-        ownerUID: user.uid,
-        ownerName: user.displayName || "Unknown",
-      });
-
-      setTitle("");
-      setDescription("");
-      setPrice("");
-      setCategory("");
-      setImage(null);
-    } catch (err) {
-      alert("Image upload failed: " + err.message);
-    } finally {
-      setUploading(false);
-    }
+    await uploadBytes(imgRef, image);
+    const url = await getDownloadURL(imgRef);
+    push(ref(db, "products"), {
+      title,
+      description,
+      price,
+      category,
+      image: url,
+      time: new Date().toLocaleString(),
+      likes: 0,
+      dislikes: 0,
+      ownerUID: null, // Add ownerUID & ownerName dynamically when user logged in (see note below)
+      ownerName: null,
+    });
+    setTitle("");
+    setDescription("");
+    setPrice("");
+    setCategory("");
+    setImage(null);
   };
 
   const handleLike = (id, delta) => {
     const field = delta > 0 ? "likes" : "dislikes";
     const prodRef = ref(db, `products/${id}`);
-    const product = products.find((p) => p.id === id);
-    if (!product) return;
-    update(prodRef, { [field]: product[field] + 1 });
+    update(prodRef, { [field]: products.find((p) => p.id === id)[field] + 1 });
   };
 
   const handleComment = (id) => {
@@ -101,7 +84,13 @@ export default function Marketplace() {
   const isDark = darkMode;
 
   return (
-    <div style={{ ...pageStyle, background: isDark ? "#121212" : "#f4f4f4", color: isDark ? "#fff" : "#000" }}>
+    <div
+      style={{
+        ...pageStyle,
+        background: isDark ? "#121212" : "#f4f4f4",
+        color: isDark ? "#fff" : "#000",
+      }}
+    >
       <button style={toggleBtnStyle(isDark)} onClick={() => setDarkMode(!darkMode)}>
         {isDark ? "☀️" : "🌙"}
       </button>
@@ -110,7 +99,10 @@ export default function Marketplace() {
         {"AFRIBASE MARKETPLACE".split(" ").map((w, i) => (
           <span key={i} style={{ marginRight: "10px" }}>
             {w.split("").map((c, j) => (
-              <span key={j} style={{ ...letterStyle, animationDelay: `${(i + j) * 0.05}s` }}>
+              <span
+                key={j}
+                style={{ ...letterStyle, animationDelay: `${(i + j) * 0.05}s` }}
+              >
                 {c}
               </span>
             ))}
@@ -125,34 +117,29 @@ export default function Marketplace() {
         onChange={(e) => setSearch(e.target.value)}
       />
 
-      {/* Post New Product Form */}
       <div style={formStyle}>
         <input
           style={inputStyle(isDark)}
           placeholder="Title"
           value={title}
           onChange={(e) => setTitle(e.target.value)}
-          disabled={uploading}
         />
         <textarea
           style={textStyle(isDark)}
           placeholder="Description"
           value={description}
           onChange={(e) => setDescription(e.target.value)}
-          disabled={uploading}
         />
         <input
           style={inputStyle(isDark)}
           placeholder="Price"
           value={price}
           onChange={(e) => setPrice(e.target.value)}
-          disabled={uploading}
         />
         <select
           style={inputStyle(isDark)}
           value={category}
           onChange={(e) => setCategory(e.target.value)}
-          disabled={uploading}
         >
           <option value="">Category</option>
           <option value="Electronics">📱 Electronics</option>
@@ -161,17 +148,16 @@ export default function Marketplace() {
           <option value="Vehicles">🚗 Vehicles</option>
           <option value="Other">🔧 Other</option>
         </select>
-        <input type="file" onChange={(e) => setImage(e.target.files[0])} disabled={uploading} />
-        <button style={buttonStyle} onClick={handlePost} disabled={uploading}>
-          {uploading ? "Uploading..." : "📤 Post"}
+        <input type="file" onChange={(e) => setImage(e.target.files[0])} />
+        <button style={buttonStyle} onClick={handlePost}>
+          📤 Post
         </button>
       </div>
 
-      {/* Products Grid */}
       <div style={productGrid}>
         {filtered.map((p) => (
           <div key={p.id} style={{ ...cardStyle(isDark) }}>
-            <img src={p.image} style={imgStyle} alt={p.title} onClick={() => setModal(p)} />
+            <img src={p.image} style={imgStyle} onClick={() => setModal(p)} />
             <h3>{p.title}</h3>
             <p style={{ flexGrow: 1 }}>{p.description}</p>
             <strong style={{ color: "#00ffcc" }}>{p.price}</strong>
@@ -207,7 +193,7 @@ export default function Marketplace() {
               Post
             </button>
 
-            {/* Chat Seller button */}
+            {/* Chat Seller Button */}
             <button
               onClick={() => {
                 setSelectedUser({
@@ -232,42 +218,37 @@ export default function Marketplace() {
         ))}
       </div>
 
-      {/* Product Detail Modal */}
+      {/* Product modal */}
       {modal && (
         <div style={modalOverlay} onClick={() => setModal(null)}>
-          <div style={modalContent} onClick={(e) => e.stopPropagation()}>
-            <img src={modal.image} style={modalImage} alt={modal.title} />
+          <div style={modalContent}>
+            <img src={modal.image} style={modalImage} />
             <h2>{modal.title}</h2>
             <p>{modal.description}</p>
             <p>📂 {modal.category}</p>
             <p style={{ color: "#00ffcc", fontWeight: "bold" }}>{modal.price}</p>
             <p style={{ fontSize: "12px", color: "#aaa" }}>{modal.time}</p>
-            <a
-              href={`https://wa.me/?text=Hi I'm interested in your ${encodeURIComponent(modal.title)}`}
-              target="_blank"
-              rel="noopener noreferrer"
-              style={waBtnStyle}
-            >
+            <a href={`https://wa.me/?text=Hi I'm interested`} style={waBtnStyle}>
               💬 WhatsApp
             </a>
           </div>
         </div>
       )}
 
-      {/* Send Private Message Modal */}
-      {showModal && selectedUser && (
+      {/* SendPrivateMessage Modal */}
+      {showModal && (
         <SendPrivateMessage
           recipientUID={selectedUser.uid}
           recipientName={selectedUser.name}
           onClose={() => setShowModal(false)}
-          productId={null}
+          productId={null} // optional if no product context
         />
       )}
     </div>
   );
 }
 
-// === Styles
+// === Styles (same as before) ...
 const toggleBtnStyle = (isDark) => ({
   position: "absolute",
   top: 20,
@@ -283,127 +264,21 @@ const toggleBtnStyle = (isDark) => ({
 });
 
 const pageStyle = { padding: 20, minHeight: "100vh", fontFamily: "Poppins", position: "relative" };
-const headerStyle = {
-  textAlign: "center",
-  margin: "20px 0",
-  fontWeight: "800",
-  display: "flex",
-  justifyContent: "center",
-  flexWrap: "wrap",
-};
-const letterStyle = {
-  background: "linear-gradient(to top,#00ffcc,#000)",
-  WebkitBackgroundClip: "text",
-  WebkitTextFillColor: "transparent",
-  animation: "flickerColor 2s infinite",
-};
-const searchInput = {
-  width: "100%",
-  maxWidth: 400,
-  display: "block",
-  margin: "0 auto 20px",
-  padding: "10px",
-  border: "none",
-  borderRadius: 8,
-  fontSize: 16,
-};
-const formStyle = {
-  display: "flex",
-  flexDirection: "column",
-  gap: 10,
-  maxWidth: "100%",
-  padding: "10px",
-  margin: "0 auto 20px",
-  boxSizing: "border-box",
-};
-const inputStyle = (isDark) => ({
-  padding: 12,
-  borderRadius: 8,
-  border: "none",
-  fontSize: 16,
-  background: isDark ? "#1f1f1f" : "#fff",
-  color: isDark ? "#fff" : "#000",
-});
+const headerStyle = { textAlign: "center", margin: "20px 0", fontWeight: "800", display: "flex", justifyContent: "center", flexWrap: "wrap" };
+const letterStyle = { background: "linear-gradient(to top,#00ffcc,#000)", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent", animation: "flickerColor 2s infinite" };
+const searchInput = { width: "100%", maxWidth: 400, display: "block", margin: "0 auto 20px", padding: "10px", border: "none", borderRadius: 8, fontSize: 16 };
+const formStyle = { display: "flex", flexDirection: "column", gap: 10, maxWidth: "100%", padding: "10px", margin: "0 auto 20px", boxSizing: "border-box" };
+const inputStyle = (isDark) => ({ padding: 12, borderRadius: 8, border: "none", fontSize: 16, background: isDark ? "#1f1f1f" : "#fff", color: isDark ? "#fff" : "#000" });
 const textStyle = inputStyle;
-const buttonStyle = {
-  padding: 10,
-  backgroundColor: "#00ffcc",
-  color: "#000",
-  border: "none",
-  borderRadius: 6,
-  fontSize: 14,
-  cursor: "pointer",
-  marginTop: 5,
-};
-const productGrid = {
-  display: "grid",
-  gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))",
-  gap: "14px",
-};
-const cardStyle = (isDark) => ({
-  padding: 12,
-  borderRadius: 10,
-  boxShadow: "0 0 10px #00ffcc30",
-  display: "flex",
-  flexDirection: "column",
-  background: isDark ? "#1e1e1e" : "#fff",
-  color: isDark ? "#fff" : "#000",
-});
-const imgStyle = {
-  width: "100%",
-  height: "110px",
-  objectFit: "cover",
-  borderRadius: 8,
-  marginBottom: 8,
-  cursor: "pointer",
-};
+const buttonStyle = { padding: 10, backgroundColor: "#00ffcc", color: "#000", border: "none", borderRadius: 6, fontSize: 14, cursor: "pointer", marginTop: 5 };
+const productGrid = { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: "14px" };
+const cardStyle = (isDark) => ({ padding: 12, borderRadius: 10, boxShadow: "0 0 10px #00ffcc30", display: "flex", flexDirection: "column", background: isDark ? "#1e1e1e" : "#fff", color: isDark ? "#fff" : "#000" });
+const imgStyle = { width: "100%", height: "110px", objectFit: "cover", borderRadius: 8, marginBottom: 8, cursor: "pointer" };
 const categoryStyle = { fontSize: 14, color: "#00ffcc", margin: "5px 0" };
-const socialRowStyle = {
-  display: "flex",
-  justifyContent: "space-between",
-  alignItems: "center",
-  background: "rgba(255,255,255,0.06)",
-  padding: "8px",
-  borderRadius: 8,
-  marginTop: 10,
-};
+const socialRowStyle = { display: "flex", justifyContent: "space-between", alignItems: "center", background: "rgba(255,255,255,0.06)", padding: "8px", borderRadius: 8, marginTop: 10 };
 const emojiBtnStyle = { cursor: "pointer", marginRight: 10, fontSize: 16 };
-const waBtnStyle = {
-  backgroundColor: "#25D366",
-  color: "#fff",
-  padding: "6px 12px",
-  borderRadius: 20,
-  textDecoration: "none",
-  fontSize: 14,
-  fontWeight: "500",
-};
+const waBtnStyle = { backgroundColor: "#25D366", color: "#fff", padding: "6px 12px", borderRadius: 20, textDecoration: "none", fontSize: 14, fontWeight: "500" };
 const commentStyle = (isDark) => ({ ...inputStyle(isDark), marginTop: 10 });
-const modalOverlay = {
-  position: "fixed",
-  top: 0,
-  left: 0,
-  right: 0,
-  bottom: 0,
-  background: "rgba(0,0,0,0.7)",
-  display: "flex",
-  justifyContent: "center",
-  alignItems: "center",
-  zIndex: 10,
-};
-const modalContent = {
-  background: "#1e1e1e",
-  padding: 20,
-  borderRadius: 10,
-  maxWidth: "90%",
-  maxHeight: "90%",
-  color: "#fff",
-overflowY: "auto",
-  textAlign: "center",
-};
-const modalImage = {
-  width: "100%",
-  maxHeight: 300,
-  objectFit: "contain",
-  borderRadius: 8,
-  marginBottom: 20,
-};
+const modalOverlay = { position: "fixed", top: 0, left: 0, right: 0, bottom: 0, background: "rgba(0,0,0,0.7)", display: "flex", justifyContent: "center", alignItems: "center", zIndex: 10 };
+const modalContent = { background: "#1e1e1e", padding: 20, borderRadius: 10, maxWidth: "90%", maxHeight: "90%", color: "#fff", overflowY: "auto", textAlign: "center" };
+const modalImage = { width: "100%", maxHeight: 300, objectFit: "contain", borderRadius: 8, marginBottom: 20 };
