@@ -1,9 +1,10 @@
-// Marketplace.js
+// src/pages/Marketplace.js
 import React, { useState, useEffect } from "react";
 import { db } from "../firebase";
 import { ref, push, onValue, update, remove } from "firebase/database";
 import { getAuth } from "firebase/auth";
 import SendPrivateMessage from "../components/SendPrivateMessage";
+
 import styles from "./Marketplace.module.css";
 
 const imgbbKey = "30df4aa05f1af3b3b58ee8a74639e5cf";
@@ -14,7 +15,7 @@ export default function Marketplace() {
   const [description, setDescription] = useState("");
   const [price, setPrice] = useState("");
   const [category, setCategory] = useState("");
-  const [images, setImages] = useState([]); // Array for multiple images
+  const [images, setImages] = useState([]); // Array of selected files
   const [search, setSearch] = useState("");
   const [modal, setModal] = useState(null);
   const [commentInputs, setCommentInputs] = useState({});
@@ -22,7 +23,6 @@ export default function Marketplace() {
   const [showModal, setShowModal] = useState(false);
   const [selectedUser, setSelectedUser] = useState(null);
   const [uploading, setUploading] = useState(false);
-
   const auth = getAuth();
 
   useEffect(() => {
@@ -42,48 +42,44 @@ export default function Marketplace() {
     });
   }, []);
 
-  // Handle multiple images file select
-  const handleFileChange = (e) => {
-    setImages(Array.from(e.target.files));
-  };
-
-  // Upload images to imgbb and return array of {url, deleteUrl}
-  const uploadImages = async () => {
-    const uploadedImages = [];
-    for (const imgFile of images) {
-      const formData = new FormData();
-      formData.append("image", imgFile);
-      const res = await fetch(`https://api.imgbb.com/1/upload?key=${imgbbKey}`, {
-        method: "POST",
-        body: formData,
-      });
-      const data = await res.json();
-      uploadedImages.push({
-        url: data.data.url,
-        deleteUrl: data.data.delete_url,
-      });
-    }
-    return uploadedImages;
+  // Handle multiple image selection
+  const handleImageChange = (e) => {
+    const files = Array.from(e.target.files).slice(0, 3); // max 3 files
+    setImages(files);
   };
 
   const handlePost = async () => {
     if (!title || !description || !price || !category || images.length === 0) {
-      return alert("Fill all fields and select at least one image");
+      return alert("Please fill all fields and select at least one image.");
     }
 
     const user = auth.currentUser;
     if (!user) return alert("Please login to post products.");
 
     setUploading(true);
-    try {
-      const uploadedImages = await uploadImages();
 
+    try {
+      // Upload each image to imgbb, collect URLs & delete URLs
+      const uploadPromises = images.map(async (img) => {
+        const formData = new FormData();
+        formData.append("image", img);
+        const res = await fetch(`https://api.imgbb.com/1/upload?key=${imgbbKey}`, {
+          method: "POST",
+          body: formData,
+        });
+        const data = await res.json();
+        return { url: data.data.url, deleteUrl: data.data.delete_url };
+      });
+
+      const uploadedImages = await Promise.all(uploadPromises);
+
+      // Push product with images array
       await push(ref(db, "products"), {
         title,
         description,
         price,
         category,
-        images: uploadedImages, // store array of images with url and deleteUrl
+        images: uploadedImages,
         time: new Date().toLocaleString(),
         likes: [],
         dislikes: [],
@@ -92,6 +88,7 @@ export default function Marketplace() {
         ownerName: user.displayName || "Unknown",
       });
 
+      // Clear inputs
       setTitle("");
       setDescription("");
       setPrice("");
@@ -154,12 +151,15 @@ export default function Marketplace() {
       const product = products.find((p) => p.id === id);
       if (!product) return;
 
-      // Delete all images from imgbb via their deleteUrl
-      if (product.images && product.images.length > 0) {
-        await Promise.all(
-          product.images.map((img) => fetch(img.deleteUrl, { method: "GET" }))
-        );
+      // Delete all images from imgbb
+      if (product.images && product.images.length) {
+        for (const img of product.images) {
+          if (img.deleteUrl) {
+            await fetch(img.deleteUrl, { method: "GET" });
+          }
+        }
       }
+
       await remove(ref(db, `products/${id}`));
     } catch (error) {
       alert("Failed to delete product images: " + error.message);
@@ -170,7 +170,7 @@ export default function Marketplace() {
     remove(ref(db, `products/${prodId}/comments/${commentKey}`));
   };
 
-  const filteredProducts = products.filter(
+  const filtered = products.filter(
     (p) =>
       p.title.toLowerCase().includes(search.toLowerCase()) ||
       p.description.toLowerCase().includes(search.toLowerCase())
@@ -191,39 +191,45 @@ export default function Marketplace() {
       </div>
 
       <input
-        type="text"
+        className={styles.searchInput}
         placeholder="🔍 Search products..."
         value={search}
         onChange={(e) => setSearch(e.target.value)}
-        className={styles.searchInput}
       />
 
-      <div className={styles.postForm}>
+      <form
+        className={styles.postForm}
+        onSubmit={(e) => {
+          e.preventDefault();
+          if (!uploading) handlePost();
+        }}
+      >
         <input
-          type="text"
+          className={styles.input}
           placeholder="Title"
           value={title}
           onChange={(e) => setTitle(e.target.value)}
-          className={styles.input}
+          required
         />
         <input
-          type="text"
+          className={styles.input}
           placeholder="Description"
           value={description}
           onChange={(e) => setDescription(e.target.value)}
-          className={styles.input}
+          required
         />
         <input
-          type="text"
+          className={styles.input}
           placeholder="Price"
           value={price}
           onChange={(e) => setPrice(e.target.value)}
-          className={styles.input}
+          required
         />
         <select
+          className={styles.select}
           value={category}
           onChange={(e) => setCategory(e.target.value)}
-          className={styles.select}
+          required
         >
           <option value="">Category</option>
           <option value="Electronics">📱 Electronics</option>
@@ -232,25 +238,27 @@ export default function Marketplace() {
           <option value="Vehicles">🚗 Vehicles</option>
           <option value="Other">🔧 Other</option>
         </select>
+
         <input
+          className={styles.fileInput}
           type="file"
           multiple
-          onChange={handleFileChange}
-          className={styles.fileInput}
           accept="image/*"
+          onChange={handleImageChange}
+          required
         />
         <button
-          onClick={handlePost}
-          disabled={uploading}
           className={styles.postButton}
-          title="Post product"
+          type="submit"
+          disabled={uploading}
+          title="You can upload up to 3 images"
         >
           {uploading ? "Uploading..." : "📤 Post"}
         </button>
-      </div>
+      </form>
 
       <div className={styles.productGrid}>
-        {filteredProducts.map((p) => (
+        {filtered.map((p) => (
           <div key={p.id} className={styles.card}>
             <div
               className={styles.deleteProduct}
@@ -260,18 +268,20 @@ export default function Marketplace() {
               ❌
             </div>
 
-            <div className={styles.imagesContainer}>
-              {p.images &&
-                p.images.map((img, idx) => (
+            {/* Show all images with click to open modal */}
+            {p.images && p.images.length > 0 && (
+              <div className={styles.imageGallery}>
+                {p.images.map((img, idx) => (
                   <img
                     key={idx}
                     src={img.url}
                     alt={`${p.title} ${idx + 1}`}
-                    className={styles.productImageThumb}
-                    onClick={() => setModal({ ...p, image: img.url })}
+                    className={styles.productImage}
+                    onClick={() => setModal(p)}
                   />
                 ))}
-            </div>
+              </div>
+            )}
 
             <h3 className={styles.productTitle}>{p.title}</h3>
             <p className={styles.productDescription}>{p.description}</p>
@@ -283,22 +293,14 @@ export default function Marketplace() {
               <div>
                 <span
                   onClick={() => handleLike(p.id)}
-                  className={`${styles.emojiBtn} ${
-                    p.likes.includes(auth.currentUser?.uid)
-                      ? styles.liked
-                      : ""
-                  }`}
+                  className={styles.emojiBtn}
                   title="Like"
                 >
                   👍 {p.likes.length}
                 </span>
                 <span
                   onClick={() => handleDislike(p.id)}
-                  className={`${styles.emojiBtn} ${
-                    p.dislikes.includes(auth.currentUser?.uid)
-                      ? styles.disliked
-                      : ""
-                  }`}
+                  className={styles.emojiBtn}
                   title="Dislike"
                 >
                   👎 {p.dislikes.length}
@@ -311,6 +313,7 @@ export default function Marketplace() {
                 target="_blank"
                 rel="noopener noreferrer"
                 className={styles.waBtn}
+                title="Contact via WhatsApp"
               >
                 💬 WhatsApp
               </a>
@@ -318,7 +321,7 @@ export default function Marketplace() {
 
             <div className={styles.commentSection}>
               <button
-                className={styles.commentToggleBtn}
+                className={styles.commentToggle}
                 onClick={() =>
                   setShowComments({ ...showComments, [p.id]: !showComments[p.id] })
                 }
@@ -344,30 +347,27 @@ export default function Marketplace() {
               )}
 
               <input
-                type="text"
+                className={styles.commentInput}
                 placeholder="Add a comment..."
                 value={commentInputs[p.id] || ""}
                 onChange={(e) =>
                   setCommentInputs({ ...commentInputs, [p.id]: e.target.value })
                 }
-                className={styles.commentInput}
               />
               <button
-                onClick={() => handleComment(p.id)}
                 className={styles.postCommentBtn}
-                title="Post comment"
+                onClick={() => handleComment(p.id)}
               >
                 Post
               </button>
             </div>
 
             <button
+              className={styles.chatSellerBtn}
               onClick={() => {
                 setSelectedUser({ uid: p.ownerUID, name: p.ownerName });
                 setShowModal(true);
               }}
-              className={styles.chatSellerBtn}
-              title="Chat with seller"
             >
               Chat Seller
             </button>
@@ -375,27 +375,23 @@ export default function Marketplace() {
         ))}
       </div>
 
-      {/* Modal for image */}
       {modal && (
-        <div
-          className={styles.modalOverlay}
-          onClick={() => setModal(null)}
-          title="Close modal"
-        >
-          <div
-            className={styles.modalContent}
-            onClick={(e) => e.stopPropagation()}
-          >
-            <img
-              src={modal.image}
-              alt={modal.title}
-              className={styles.modalImage}
-            />
+        <div className={styles.modalOverlay} onClick={() => setModal(null)}>
+          <div className={styles.modalContent} onClick={(e) => e.stopPropagation()}>
+            {modal.images &&
+              modal.images.map((img, idx) => (
+                <img
+                  key={idx}
+                  src={img.url}
+                  alt={`${modal.title} full view ${idx + 1}`}
+                  className={styles.modalImage}
+                />
+              ))}
             <h2>{modal.title}</h2>
             <p>{modal.description}</p>
             <p>📂 {modal.category}</p>
             <p className={styles.productPrice}>{modal.price}</p>
-            <p style={{ fontSize: 12, color: "#aaa" }}>{modal.time}</p>
+            <p style={{ fontSize: "12px", color: "#aaa" }}>{modal.time}</p>
             <a
               href={`https://wa.me/?text=Hi I'm interested in your ${encodeURIComponent(
                 modal.title
@@ -410,7 +406,6 @@ export default function Marketplace() {
         </div>
       )}
 
-      {/* Private Message modal */}
       {showModal && selectedUser && (
         <SendPrivateMessage
           recipientUID={selectedUser.uid}
