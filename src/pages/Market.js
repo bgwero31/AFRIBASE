@@ -4,6 +4,7 @@ import { db } from "../firebase";
 import { ref, push, onValue, update, remove } from "firebase/database";
 import { getAuth } from "firebase/auth";
 import SendPrivateMessage from "../components/SendPrivateMessage";
+import styles from "./Marketplace.module.css";
 
 const imgbbKey = "30df4aa05f1af3b3b58ee8a74639e5cf";
 
@@ -13,7 +14,7 @@ export default function Marketplace() {
   const [description, setDescription] = useState("");
   const [price, setPrice] = useState("");
   const [category, setCategory] = useState("");
-  const [image, setImage] = useState(null);
+  const [images, setImages] = useState([]); // Array for multiple images
   const [search, setSearch] = useState("");
   const [modal, setModal] = useState(null);
   const [commentInputs, setCommentInputs] = useState({});
@@ -21,6 +22,7 @@ export default function Marketplace() {
   const [showModal, setShowModal] = useState(false);
   const [selectedUser, setSelectedUser] = useState(null);
   const [uploading, setUploading] = useState(false);
+
   const auth = getAuth();
 
   useEffect(() => {
@@ -40,34 +42,48 @@ export default function Marketplace() {
     });
   }, []);
 
-  const handlePost = async () => {
-    if (!title || !description || !price || !category || !image) {
-      return alert("Fill all fields");
-    }
+  // Handle multiple images file select
+  const handleFileChange = (e) => {
+    setImages(Array.from(e.target.files));
+  };
 
-    const user = auth.currentUser;
-    if (!user) return alert("Please login to post products.");
-    setUploading(true);
-
-    try {
+  // Upload images to imgbb and return array of {url, deleteUrl}
+  const uploadImages = async () => {
+    const uploadedImages = [];
+    for (const imgFile of images) {
       const formData = new FormData();
-      formData.append("image", image);
+      formData.append("image", imgFile);
       const res = await fetch(`https://api.imgbb.com/1/upload?key=${imgbbKey}`, {
         method: "POST",
         body: formData,
       });
       const data = await res.json();
+      uploadedImages.push({
+        url: data.data.url,
+        deleteUrl: data.data.delete_url,
+      });
+    }
+    return uploadedImages;
+  };
 
-      const url = data.data.url;
-      const deleteUrl = data.data.delete_url;
+  const handlePost = async () => {
+    if (!title || !description || !price || !category || images.length === 0) {
+      return alert("Fill all fields and select at least one image");
+    }
+
+    const user = auth.currentUser;
+    if (!user) return alert("Please login to post products.");
+
+    setUploading(true);
+    try {
+      const uploadedImages = await uploadImages();
 
       await push(ref(db, "products"), {
         title,
         description,
         price,
         category,
-        image: url,
-        deleteUrl,
+        images: uploadedImages, // store array of images with url and deleteUrl
         time: new Date().toLocaleString(),
         likes: [],
         dislikes: [],
@@ -80,7 +96,7 @@ export default function Marketplace() {
       setDescription("");
       setPrice("");
       setCategory("");
-      setImage(null);
+      setImages([]);
     } catch (err) {
       alert("Image upload failed: " + err.message);
     } finally {
@@ -137,12 +153,16 @@ export default function Marketplace() {
     try {
       const product = products.find((p) => p.id === id);
       if (!product) return;
-      if (product.deleteUrl) {
-        await fetch(product.deleteUrl, { method: "GET" });
+
+      // Delete all images from imgbb via their deleteUrl
+      if (product.images && product.images.length > 0) {
+        await Promise.all(
+          product.images.map((img) => fetch(img.deleteUrl, { method: "GET" }))
+        );
       }
       await remove(ref(db, `products/${id}`));
     } catch (error) {
-      alert("Failed to delete product image: " + error.message);
+      alert("Failed to delete product images: " + error.message);
     }
   };
 
@@ -150,41 +170,61 @@ export default function Marketplace() {
     remove(ref(db, `products/${prodId}/comments/${commentKey}`));
   };
 
-  const filtered = products.filter(
+  const filteredProducts = products.filter(
     (p) =>
       p.title.toLowerCase().includes(search.toLowerCase()) ||
       p.description.toLowerCase().includes(search.toLowerCase())
   );
 
   return (
-    <div
-      style={{
-        ...pageStyle,
-        backgroundImage: "url('/IMG-20250620-WA0007.jpg')",
-        backgroundSize: "cover",
-        backgroundPosition: "center",
-      }}
-    >
-      <div style={headerStyle}>
+    <div className={styles.page}>
+      <div className={styles.header}>
         {"AFRIBASE MARKETPLACE".split("").map((char, i) => (
-          <span key={i} style={{ ...letterStyle, animationDelay: `${i * 0.05}s` }}>
+          <span
+            key={i}
+            className={styles.letter}
+            style={{ animationDelay: `${i * 0.05}s` }}
+          >
             {char}
           </span>
         ))}
       </div>
 
       <input
-        style={searchInput}
+        type="text"
         placeholder="🔍 Search products..."
         value={search}
         onChange={(e) => setSearch(e.target.value)}
+        className={styles.searchInput}
       />
 
-      <div>
-        <input placeholder="Title" value={title} onChange={(e) => setTitle(e.target.value)} />
-        <input placeholder="Description" value={description} onChange={(e) => setDescription(e.target.value)} />
-        <input placeholder="Price" value={price} onChange={(e) => setPrice(e.target.value)} />
-        <select value={category} onChange={(e) => setCategory(e.target.value)}>
+      <div className={styles.postForm}>
+        <input
+          type="text"
+          placeholder="Title"
+          value={title}
+          onChange={(e) => setTitle(e.target.value)}
+          className={styles.input}
+        />
+        <input
+          type="text"
+          placeholder="Description"
+          value={description}
+          onChange={(e) => setDescription(e.target.value)}
+          className={styles.input}
+        />
+        <input
+          type="text"
+          placeholder="Price"
+          value={price}
+          onChange={(e) => setPrice(e.target.value)}
+          className={styles.input}
+        />
+        <select
+          value={category}
+          onChange={(e) => setCategory(e.target.value)}
+          className={styles.select}
+        >
           <option value="">Category</option>
           <option value="Electronics">📱 Electronics</option>
           <option value="Clothing">👗 Clothing</option>
@@ -192,54 +232,108 @@ export default function Marketplace() {
           <option value="Vehicles">🚗 Vehicles</option>
           <option value="Other">🔧 Other</option>
         </select>
-        <input type="file" onChange={(e) => setImage(e.target.files[0])} />
-        <button onClick={handlePost} disabled={uploading}>
+        <input
+          type="file"
+          multiple
+          onChange={handleFileChange}
+          className={styles.fileInput}
+          accept="image/*"
+        />
+        <button
+          onClick={handlePost}
+          disabled={uploading}
+          className={styles.postButton}
+          title="Post product"
+        >
           {uploading ? "Uploading..." : "📤 Post"}
         </button>
       </div>
 
-      <div style={productGrid}>
-        {filtered.map((p) => (
-          <div key={p.id} style={cardStyle}>
+      <div className={styles.productGrid}>
+        {filteredProducts.map((p) => (
+          <div key={p.id} className={styles.card}>
             <div
-              style={{ position: "absolute", top: 8, right: 12, fontWeight: "bold", fontSize: 18, cursor: "pointer", color: "red" }}
+              className={styles.deleteProduct}
               onClick={() => handleDeleteProduct(p.id)}
+              title="Delete product"
             >
               ❌
             </div>
-            <img src={p.image} style={imgStyle} alt={p.title} onClick={() => setModal(p)} />
-            <h3>{p.title}</h3>
-            <p>{p.description}</p>
-            <strong style={{ color: "#00cc88" }}>{p.price}</strong>
-            <div>📂 {p.category}</div>
-            <div style={{ fontSize: "12px", color: "#555" }}>{p.time}</div>
 
-            <div style={socialRowStyle}>
+            <div className={styles.imagesContainer}>
+              {p.images &&
+                p.images.map((img, idx) => (
+                  <img
+                    key={idx}
+                    src={img.url}
+                    alt={`${p.title} ${idx + 1}`}
+                    className={styles.productImageThumb}
+                    onClick={() => setModal({ ...p, image: img.url })}
+                  />
+                ))}
+            </div>
+
+            <h3 className={styles.productTitle}>{p.title}</h3>
+            <p className={styles.productDescription}>{p.description}</p>
+            <strong className={styles.productPrice}>{p.price}</strong>
+            <div className={styles.productCategory}>📂 {p.category}</div>
+            <div className={styles.productTime}>{p.time}</div>
+
+            <div className={styles.socialRow}>
               <div>
-                <span onClick={() => handleLike(p.id)} style={emojiBtnStyle}>👍 {p.likes.length}</span>
-                <span onClick={() => handleDislike(p.id)} style={emojiBtnStyle}>👎 {p.dislikes.length}</span>
+                <span
+                  onClick={() => handleLike(p.id)}
+                  className={`${styles.emojiBtn} ${
+                    p.likes.includes(auth.currentUser?.uid)
+                      ? styles.liked
+                      : ""
+                  }`}
+                  title="Like"
+                >
+                  👍 {p.likes.length}
+                </span>
+                <span
+                  onClick={() => handleDislike(p.id)}
+                  className={`${styles.emojiBtn} ${
+                    p.dislikes.includes(auth.currentUser?.uid)
+                      ? styles.disliked
+                      : ""
+                  }`}
+                  title="Dislike"
+                >
+                  👎 {p.dislikes.length}
+                </span>
               </div>
               <a
-                href={`https://wa.me/?text=Hi I'm interested in your ${encodeURIComponent(p.title)}`}
+                href={`https://wa.me/?text=Hi I'm interested in your ${encodeURIComponent(
+                  p.title
+                )}`}
                 target="_blank"
                 rel="noopener noreferrer"
-                style={waBtnStyle}
+                className={styles.waBtn}
               >
                 💬 WhatsApp
               </a>
             </div>
 
-            <div>
-              <button onClick={() => setShowComments({ ...showComments, [p.id]: !showComments[p.id] })}>
+            <div className={styles.commentSection}>
+              <button
+                className={styles.commentToggleBtn}
+                onClick={() =>
+                  setShowComments({ ...showComments, [p.id]: !showComments[p.id] })
+                }
+              >
                 💬 Comments ({Object.keys(p.comments).length})
               </button>
+
               {showComments[p.id] && (
-                <div style={{ maxHeight: "100px", overflowY: "auto", marginTop: "5px" }}>
+                <div className={styles.commentsList}>
                   {Object.entries(p.comments).map(([key, c]) => (
-                    <p key={key}>
+                    <p key={key} className={styles.comment}>
                       <span
                         onClick={() => handleDeleteComment(p.id, key)}
-                        style={{ color: "red", cursor: "pointer", marginRight: 5 }}
+                        className={styles.deleteComment}
+                        title="Delete comment"
                       >
                         ❌
                       </span>
@@ -248,13 +342,23 @@ export default function Marketplace() {
                   ))}
                 </div>
               )}
+
               <input
-                style={commentInputStyle}
+                type="text"
                 placeholder="Add a comment..."
                 value={commentInputs[p.id] || ""}
-                onChange={(e) => setCommentInputs({ ...commentInputs, [p.id]: e.target.value })}
+                onChange={(e) =>
+                  setCommentInputs({ ...commentInputs, [p.id]: e.target.value })
+                }
+                className={styles.commentInput}
               />
-              <button style={buttonStyle} onClick={() => handleComment(p.id)}>Post</button>
+              <button
+                onClick={() => handleComment(p.id)}
+                className={styles.postCommentBtn}
+                title="Post comment"
+              >
+                Post
+              </button>
             </div>
 
             <button
@@ -262,15 +366,8 @@ export default function Marketplace() {
                 setSelectedUser({ uid: p.ownerUID, name: p.ownerName });
                 setShowModal(true);
               }}
-              style={{
-                backgroundColor: "#00cc88",
-                color: "#fff",
-                padding: "8px 14px",
-                borderRadius: "6px",
-                fontWeight: "bold",
-                cursor: "pointer",
-                marginTop: "10px",
-              }}
+              className={styles.chatSellerBtn}
+              title="Chat with seller"
             >
               Chat Seller
             </button>
@@ -278,20 +375,34 @@ export default function Marketplace() {
         ))}
       </div>
 
+      {/* Modal for image */}
       {modal && (
-        <div style={modalOverlay} onClick={() => setModal(null)}>
-          <div style={modalContent} onClick={(e) => e.stopPropagation()}>
-            <img src={modal.image} style={modalImage} alt={modal.title} />
+        <div
+          className={styles.modalOverlay}
+          onClick={() => setModal(null)}
+          title="Close modal"
+        >
+          <div
+            className={styles.modalContent}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <img
+              src={modal.image}
+              alt={modal.title}
+              className={styles.modalImage}
+            />
             <h2>{modal.title}</h2>
             <p>{modal.description}</p>
             <p>📂 {modal.category}</p>
-            <p style={{ color: "#00cc88", fontWeight: "bold" }}>{modal.price}</p>
-            <p style={{ fontSize: "12px", color: "#aaa" }}>{modal.time}</p>
+            <p className={styles.productPrice}>{modal.price}</p>
+            <p style={{ fontSize: 12, color: "#aaa" }}>{modal.time}</p>
             <a
-              href={`https://wa.me/?text=Hi I'm interested in your ${encodeURIComponent(modal.title)}`}
+              href={`https://wa.me/?text=Hi I'm interested in your ${encodeURIComponent(
+                modal.title
+              )}`}
               target="_blank"
               rel="noopener noreferrer"
-              style={waBtnStyle}
+              className={styles.waBtn}
             >
               💬 WhatsApp
             </a>
@@ -299,6 +410,7 @@ export default function Marketplace() {
         </div>
       )}
 
+      {/* Private Message modal */}
       {showModal && selectedUser && (
         <SendPrivateMessage
           recipientUID={selectedUser.uid}
@@ -310,132 +422,3 @@ export default function Marketplace() {
     </div>
   );
 }
-
-// Styles
-const pageStyle = {
-  padding: 20,
-  minHeight: "100vh",
-  fontFamily: "Poppins",
-  position: "relative",
-};
-
-const headerStyle = {
-  textAlign: "center",
-  margin: "20px 0",
-  fontWeight: "800",
-  display: "flex",
-  justifyContent: "center",
-  flexWrap: "wrap",
-  fontSize: "1.8rem",
-};
-
-const letterStyle = {
-  background: "linear-gradient(to right, red, black)",
-  WebkitBackgroundClip: "text",
-  WebkitTextFillColor: "transparent",
-  animation: "fade-in 0.5s ease forwards",
-  opacity: 0,
-};
-
-const searchInput = {
-  width: "100%",
-  padding: 10,
-  fontSize: 16,
-  borderRadius: 10,
-  margin: "10px 0",
-  border: "1px solid #ccc",
-};
-
-const productGrid = {
-  display: "grid",
-  gridTemplateColumns: "repeat(auto-fill, minmax(250px, 1fr))",
-  gap: 20,
-  marginTop: 20,
-};
-
-const cardStyle = {
-  background: "#fff",
-  padding: 15,
-  borderRadius: 15,
-  boxShadow: "0 2px 8px rgba(0,0,0,0.2)",
-  position: "relative",
-};
-
-const imgStyle = {
-  width: "100%",
-  height: "200px",
-  objectFit: "cover",
-  borderRadius: "10px",
-  cursor: "pointer",
-};
-
-const commentInputStyle = {
-  width: "100%",
-  padding: 8,
-  borderRadius: 8,
-  border: "1px solid #ccc",
-  marginTop: 5,
-  background: "#fff",
-  color: "#000",
-};
-
-const emojiBtnStyle = {
-  cursor: "pointer",
-  marginRight: 10,
-};
-
-const waBtnStyle = {
-  textDecoration: "none",
-  fontWeight: "bold",
-  background: "#25D366",
-  color: "#fff",
-  padding: "6px 10px",
-  borderRadius: "6px",
-  marginLeft: 10,
-};
-
-const buttonStyle = {
-  background: "#00cc88",
-  color: "#fff",
-  padding: "6px 12px",
-  borderRadius: 6,
-  border: "none",
-  cursor: "pointer",
-  marginTop: 5,
-};
-
-const socialRowStyle = {
-  display: "flex",
-  justifyContent: "space-between",
-  alignItems: "center",
-  marginTop: 10,
-};
-
-const modalOverlay = {
-  position: "fixed",
-  top: 0,
-  left: 0,
-  width: "100vw",
-  height: "100vh",
-  background: "rgba(0,0,0,0.5)",
-  display: "flex",
-  justifyContent: "center",
-  alignItems: "center",
-  zIndex: 10,
-};
-
-const modalContent = {
-  background: "#fff",
-  padding: 20,
-  borderRadius: 10,
-  width: "90%",
-  maxWidth: 400,
-  textAlign: "center",
-};
-
-const modalImage = {
-  width: "100%",
-  height: "250px",
-  objectFit: "cover",
-  borderRadius: 10,
-};
