@@ -1,9 +1,13 @@
+/* Marketplace.module.css */
+
 .page {
   padding: 20px;
   min-height: 100vh;
-  font-family: "Poppins", sans-serif;
-  background: url("/IMG-20250620-WA0007.jpg") center/cover no-repeat;
+  font-family: 'Poppins', sans-serif;
   position: relative;
+  background-image: url('/IMG-20250620-WA0007.jpg');
+  background-size: cover;
+  background-position: center;
 }
 
 .header {
@@ -14,6 +18,7 @@
   justify-content: center;
   flex-wrap: wrap;
   font-size: 2rem;
+  user-select: none;
 }
 
 .letter {
@@ -22,6 +27,7 @@
   -webkit-text-fill-color: transparent;
   animation: fade-in 0.5s ease forwards;
   opacity: 0;
+  animation-fill-mode: forwards;
 }
 
 @keyframes fade-in {
@@ -32,7 +38,7 @@
 
 .searchInput {
   width: 100%;
-  padding: 12px 16px;
+  padding: 12px;
   font-size: 16px;
   border-radius: 10px;
   margin-bottom: 20px;
@@ -43,15 +49,16 @@
 .postForm {
   display: flex;
   flex-wrap: wrap;
-  gap: 10px;
-  margin-bottom: 20px;
+  gap: 12px;
+  margin-bottom: 25px;
+  align-items: center;
 }
 
 .input,
 .select,
 .fileInput {
   flex: 1 1 200px;
-  padding: 10px 12px;
+  padding: 12px;
   font-size: 14px;
   border-radius: 8px;
   border: 1px solid #ccc;
@@ -59,94 +66,100 @@
 }
 
 .postButton {
-  background: #00cc88;
+  background-color: #00cc88;
   color: white;
   border: none;
   border-radius: 8px;
-  padding: 10px 18px;
+  padding: 12px 20px;
+  font-weight: 700;
   cursor: pointer;
-  font-weight: 600;
-  flex: 1 1 100px;
-  transition: background 0.3s ease;
+  flex: 1 1 120px;
+  transition: background-color 0.3s ease;
 }
 
 .postButton:disabled {
-  background: #88d8c0;
+  background-color: #88d8c0;
   cursor: not-allowed;
 }
 
 .productGrid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(270px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
   gap: 20px;
 }
 
 .card {
-  background: white;
-  padding: 15px;
-  border-radius: 15px;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+  background: rgba(255, 255, 255, 0.9);
+  padding: 18px;
+  border-radius: 16px;
+  box-shadow: 0 6px 15px rgba(0, 0, 0, 0.1);
   position: relative;
   cursor: default;
-  transition: transform 0.2s ease, box-shadow 0.2s ease;
+  transition: transform 0.3s ease, box-shadow 0.3s ease;
 }
 
 .card:hover {
-  transform: scale(1.015);
-  box-shadow: 0 6px 14px rgba(0, 0, 0, 0.15);
+  transform: scale(1.03);
+  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.15);
 }
 
 .deleteProduct {
   position: absolute;
-  top: 8px;
-  right: 12px;
+  top: 10px;
+  right: 14px;
   font-weight: bold;
-  font-size: 16px;
+  font-size: 20px;
+  color: red;
   cursor: pointer;
-  color: white;
-  background: rgba(0, 0, 0, 0.4);
-  border-radius: 50%;
-  padding: 4px 8px;
   user-select: none;
-  transition: background 0.3s ease;
 }
 
-.deleteProduct:hover {
-  background: rgba(255, 0, 0, 0.8);
+.imagesContainer {
+  display: flex;
+  gap: 10px;
+  overflow-x: auto;
+  margin-bottom: 12px;
 }
 
-.productImage {
-  width: 100%;
-  height: 180px;
+.productImageThumb {
+  width: 100px;
+  height: 100px;
+  border-radius: 12px;
   object-fit: cover;
-  border-radius: 10px;
-  margin-bottom: 10px;
+  cursor: pointer;
+  flex-shrink: 0;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  transition: transform 0.3s ease;
+}
+
+.productImageThumb:hover {
+  transform: scale(1.1);
 }
 
 .productTitle {
-  margin: 8px 0 4px 0;
+  margin-bottom: 6px;
 }
 
 .productDescription {
-  margin-bottom: 6px;
   font-size: 14px;
-  color: #333;
+  color: #444;
+  margin-bottom: 8px;
 }
 
 .productPrice {
   color: #00cc88;
-  font-weight: 700;
+  font-size: 18px;
 }
 
 .productCategory {
-  margin: 4px 0 0 0;
   font-size: 12px;
   color: #666;
+  margin-bottom: 6px;
 }
 
 .productTime {
-  font-size: 12px;
-  color: #555;
+  font-size: 11px;
+  color: #888;
   margin-bottom: 10px;
 }
 
@@ -154,36 +167,41 @@
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-top: 10px;
+  margin-bottom: 10px;
 }
 
 .emojiBtn {
   cursor: pointer;
-  margin-right: 10px;
-  font-size: 18px;
+  margin-right: 15px;
+  font-size: 20px;
   user-select: none;
-  transition: transform 0.2s ease;
+  color: #555;
+  transition: color 0.3s ease;
 }
 
-.emojiBtn:hover {
-  transform: scale(1.2);
+.emojiBtn.liked {
+  color: #00cc88;
+}
+
+.emojiBtn.disliked {
+  color: red;
 }
 
 .waBtn {
   text-decoration: none;
   font-weight: bold;
-  background: #25d366;
+  background-color: #25d366;
   color: white;
-  padding: 6px 12px;
+  padding: 6px 10px;
   border-radius: 6px;
-  font-size: 14px;
+  margin-left: 10px;
 }
 
 .commentSection {
   margin-top: 10px;
 }
 
-.commentToggle {
+.commentToggleBtn {
   cursor: pointer;
   background: transparent;
   border: none;
@@ -205,8 +223,6 @@
   font-size: 13px;
   margin-bottom: 4px;
   color: #444;
-  display: flex;
-  align-items: center;
 }
 
 .deleteComment {
@@ -214,7 +230,6 @@
   cursor: pointer;
   margin-right: 6px;
   user-select: none;
-  font-weight: 700;
 }
 
 .commentInput {
@@ -225,10 +240,12 @@
   font-size: 14px;
   outline: none;
   margin-bottom: 6px;
+  background: #fff;
+  color: #000;
 }
 
 .postCommentBtn {
-  background: #00cc88;
+  background-color: #00cc88;
   color: white;
   border: none;
   border-radius: 6px;
@@ -248,4 +265,33 @@
   margin-top: 10px;
   border: none;
   width: 100%;
+}
+
+.modalOverlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 10;
+}
+
+.modalContent {
+  background: #fff;
+  padding: 20px;
+  border-radius: 10px;
+  width: 90%;
+  max-width: 400px;
+  text-align: center;
+}
+
+.modalImage {
+  width: 100%;
+  height: 250px;
+  object-fit: cover;
+  border-radius: 10px;
 }
