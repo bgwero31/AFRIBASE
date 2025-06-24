@@ -36,17 +36,23 @@ export default function Marketplace() {
           comments: val.comments || {},
         }));
         setProducts(items.reverse());
+      } else {
+        setProducts([]);
       }
     });
   }, []);
 
   const handlePost = async () => {
     if (!title || !description || !price || !category || !image) {
-      return alert("Fill all fields");
+      alert("Fill all fields");
+      return;
     }
 
     const user = auth.currentUser;
-    if (!user) return alert("Please login to post products.");
+    if (!user) {
+      alert("Please login to post products.");
+      return;
+    }
     setUploading(true);
 
     try {
@@ -58,8 +64,10 @@ export default function Marketplace() {
       });
       const data = await res.json();
 
+      if (!data.success) throw new Error("Image upload failed");
+
       const url = data.data.url;
-      const deleteUrl = data.data.delete_url; // imgbb delete URL
+      const deleteUrl = data.data.delete_url;
 
       await push(ref(db, "products"), {
         title,
@@ -141,8 +149,10 @@ export default function Marketplace() {
       if (!product) return;
 
       if (product.deleteUrl) {
-        await fetch(product.deleteUrl, { method: "GET" }); // delete image on imgbb
+        // imgbb delete URL is GET request
+        await fetch(product.deleteUrl, { method: "GET" });
       }
+
       await remove(ref(db, `products/${id}`));
     } catch (error) {
       alert("Failed to delete product image: " + error.message);
@@ -418,4 +428,197 @@ const searchInput = {
   borderRadius: 10,
   margin: "10px 0 20px 0",
   border: "1px solid #ccc",
-  outline: "none
+  outline: "none",
+};
+
+const postFormStyle = {
+  display: "grid",
+  gridTemplateColumns: "1fr 1fr",
+  gap: 10,
+  marginBottom: 20,
+  alignItems: "center",
+};
+
+const inputStyle = {
+  padding: 10,
+  fontSize: 14,
+  borderRadius: 10,
+  border: "1px solid #ccc",
+  width: "100%",
+  boxSizing: "border-box",
+};
+
+const fileInputStyle = {
+  gridColumn: "span 2",
+};
+
+const buttonStyle = {
+  gridColumn: "span 2",
+  background: "#00cc88",
+  color: "#fff",
+  padding: "10px 0",
+  borderRadius: 10,
+  border: "none",
+  cursor: "pointer",
+  fontWeight: "bold",
+  fontSize: 16,
+  transition: "background-color 0.3s ease",
+};
+
+const productGrid = {
+  display: "grid",
+  gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))",
+  gap: 20,
+};
+
+const cardStyle = {
+  background: "#fff",
+  padding: 15,
+  borderRadius: 15,
+  boxShadow: "0 2px 8px rgba(0,0,0,0.15)",
+  position: "relative",
+  transition: "transform 0.3s ease, box-shadow 0.3s ease",
+  cursor: "default",
+};
+
+const deleteProductStyle = {
+  position: "absolute",
+  top: 10,
+  right: 10,
+  fontWeight: "bold",
+  fontSize: 20,
+  cursor: "pointer",
+  color: "red",
+};
+
+const imgStyle = {
+  width: "100%",
+  height: 180,
+  objectFit: "cover",
+  borderRadius: 12,
+  marginBottom: 10,
+  cursor: "pointer",
+  transition: "transform 0.3s ease",
+};
+
+const socialRowStyle = {
+  display: "flex",
+  justifyContent: "space-between",
+  alignItems: "center",
+  marginTop: 10,
+};
+
+const emojiBtnStyle = {
+  cursor: "pointer",
+  marginRight: 15,
+  fontWeight: "bold",
+  userSelect: "none",
+};
+
+const waBtnStyle = {
+  textDecoration: "none",
+  fontWeight: "bold",
+  background: "#25D366",
+  color: "#fff",
+  padding: "6px 12px",
+  borderRadius: "6px",
+  userSelect: "none",
+};
+
+const commentToggleBtnStyle = {
+  background: "transparent",
+  border: "none",
+  color: "#007bff",
+  cursor: "pointer",
+  padding: 0,
+  fontSize: 14,
+  marginTop: 10,
+  userSelect: "none",
+};
+
+const commentsListStyle = {
+  maxHeight: 120,
+  overflowY: "auto",
+  marginTop: 5,
+  borderTop: "1px solid #eee",
+  paddingTop: 5,
+};
+
+const commentStyle = {
+  fontSize: 13,
+  marginBottom: 5,
+};
+
+const deleteCommentStyle = {
+  color: "red",
+  cursor: "pointer",
+  marginRight: 6,
+  userSelect: "none",
+};
+
+const commentInputStyle = {
+  width: "100%",
+  padding: 8,
+  borderRadius: 8,
+  border: "1px solid #ccc",
+  marginTop: 8,
+  boxSizing: "border-box",
+  fontSize: 14,
+};
+
+const chatSellerBtnStyle = {
+  backgroundColor: "#00cc88",
+  color: "#fff",
+  padding: "10px 16px",
+  borderRadius: 10,
+  fontWeight: "bold",
+  cursor: "pointer",
+  marginTop: 12,
+  width: "100%",
+  border: "none",
+  userSelect: "none",
+};
+
+const modalOverlay = {
+  position: "fixed",
+  top: 0,
+  left: 0,
+  width: "100vw",
+  height: "100vh",
+  background: "rgba(0,0,0,0.5)",
+  display: "flex",
+  justifyContent: "center",
+  alignItems: "center",
+  zIndex: 1000,
+};
+
+const modalContent = {
+  background: "#fff",
+  padding: 25,
+  borderRadius: 15,
+  width: "90%",
+  maxWidth: 450,
+  boxSizing: "border-box",
+  textAlign: "center",
+  position: "relative",
+};
+
+const modalImage = {
+  width: "100%",
+  height: 220,
+  objectFit: "cover",
+  borderRadius: 15,
+  marginBottom: 15,
+};
+
+const modalCloseBtnStyle = {
+  position: "absolute",
+  top: 10,
+  right: 15,
+  border: "none",
+  background: "transparent",
+  fontSize: 18,
+  cursor: "pointer",
+  color: "#333",
+  userSelect: "none",
+};
