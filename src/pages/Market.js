@@ -13,7 +13,7 @@ export default function Marketplace() {
   const [description, setDescription] = useState("");
   const [price, setPrice] = useState("");
   const [category, setCategory] = useState("");
-  const [image, setImage] = useState(null);
+  const [images, setImages] = useState([]); // Multiple images
   const [search, setSearch] = useState("");
   const [modal, setModal] = useState(null);
   const [commentInputs, setCommentInputs] = useState({});
@@ -41,8 +41,8 @@ export default function Marketplace() {
   }, []);
 
   const handlePost = async () => {
-    if (!title || !description || !price || !category || !image) {
-      return alert("Fill all fields");
+    if (!title || !description || !price || !category || images.length === 0) {
+      return alert("Fill all fields and select at least 1 image");
     }
 
     const user = auth.currentUser;
@@ -50,24 +50,25 @@ export default function Marketplace() {
     setUploading(true);
 
     try {
-      const formData = new FormData();
-      formData.append("image", image);
-      const res = await fetch(`https://api.imgbb.com/1/upload?key=${imgbbKey}`, {
-        method: "POST",
-        body: formData,
-      });
-      const data = await res.json();
+      const uploadedImgs = [];
 
-      const url = data.data.url;
-      const deleteUrl = data.data.delete_url;  // Save the delete_url from imgbb
+      for (const img of images) {
+        const formData = new FormData();
+        formData.append("image", img);
+        const res = await fetch(`https://api.imgbb.com/1/upload?key=${imgbbKey}`, {
+          method: "POST",
+          body: formData,
+        });
+        const data = await res.json();
+        uploadedImgs.push({ url: data.data.url, deleteUrl: data.data.delete_url });
+      }
 
       await push(ref(db, "products"), {
         title,
         description,
         price,
         category,
-        image: url,
-        deleteUrl,  // Save it here
+        images: uploadedImgs,
         time: new Date().toLocaleString(),
         likes: [],
         dislikes: [],
@@ -80,9 +81,9 @@ export default function Marketplace() {
       setDescription("");
       setPrice("");
       setCategory("");
-      setImage(null);
+      setImages([]);
     } catch (err) {
-      alert("Image upload failed: " + err.message);
+      alert("Upload failed: " + err.message);
     } finally {
       setUploading(false);
     }
@@ -92,32 +93,30 @@ export default function Marketplace() {
     const user = auth.currentUser;
     if (!user) return;
 
-    const prodRef = ref(db, `products/${id}`);
     const product = products.find((p) => p.id === id);
     if (!product) return;
 
     const liked = product.likes.includes(user.uid);
-    const updatedLikes = liked
+    const newLikes = liked
       ? product.likes.filter((uid) => uid !== user.uid)
       : [...product.likes, user.uid];
 
-    update(prodRef, { likes: updatedLikes });
+    update(ref(db, `products/${id}`), { likes: newLikes });
   };
 
   const handleDislike = (id) => {
     const user = auth.currentUser;
     if (!user) return;
 
-    const prodRef = ref(db, `products/${id}`);
     const product = products.find((p) => p.id === id);
     if (!product) return;
 
     const disliked = product.dislikes.includes(user.uid);
-    const updatedDislikes = disliked
+    const newDislikes = disliked
       ? product.dislikes.filter((uid) => uid !== user.uid)
       : [...product.dislikes, user.uid];
 
-    update(prodRef, { dislikes: updatedDislikes });
+    update(ref(db, `products/${id}`), { dislikes: newDislikes });
   };
 
   const handleComment = (id) => {
@@ -135,21 +134,18 @@ export default function Marketplace() {
     setCommentInputs({ ...commentInputs, [id]: "" });
   };
 
-  // NEW: Delete image from imgbb, then delete product from firebase
   const handleDeleteProduct = async (id) => {
+    const user = auth.currentUser;
+    const product = products.find((p) => p.id === id);
+    if (!product || user?.uid !== product.ownerUID) return;
+
     try {
-      const product = products.find((p) => p.id === id);
-      if (!product) return;
-
-      // Delete image on imgbb if deleteUrl exists
-      if (product.deleteUrl) {
-        await fetch(product.deleteUrl, { method: "GET" }); // imgbb delete URL is a GET request
+      for (const img of product.images || []) {
+        if (img.deleteUrl) await fetch(img.deleteUrl);
       }
-
-      // Remove product from Firebase DB
       await remove(ref(db, `products/${id}`));
-    } catch (error) {
-      alert("Failed to delete product image: " + error.message);
+    } catch (e) {
+      alert("Failed to delete: " + e.message);
     }
   };
 
@@ -167,7 +163,7 @@ export default function Marketplace() {
     <div
       style={{
         ...pageStyle,
-        background: "url('/IMG-20250620-WA0007.jpg') center/cover",
+        background: "url('/IMG-20250620-WA0007.jpg') center/cover no-repeat",
       }}
     >
       <div style={headerStyle}>
@@ -203,7 +199,7 @@ export default function Marketplace() {
           <option value="Vehicles">🚗 Vehicles</option>
           <option value="Other">🔧 Other</option>
         </select>
-        <input type="file" onChange={(e) => setImage(e.target.files[0])} />
+        <input type="file" multiple onChange={(e) => setImages(Array.from(e.target.files))} />
         <button onClick={handlePost} disabled={uploading}>
           {uploading ? "Uploading..." : "📤 Post"}
         </button>
@@ -212,22 +208,29 @@ export default function Marketplace() {
       <div style={productGrid}>
         {filtered.map((p) => (
           <div key={p.id} style={cardStyle}>
-            <div
-              style={{
-                position: "absolute",
-                top: 8,
-                right: 12,
-                fontWeight: "bold",
-                fontSize: 18,
-                cursor: "pointer",
-                color: "red",
-              }}
-              onClick={() => handleDeleteProduct(p.id)}
-            >
-              ❌
-            </div>
+            {auth.currentUser?.uid === p.ownerUID && (
+              <div
+                style={{
+                  position: "absolute",
+                  top: 8,
+                  right: 12,
+                  fontWeight: "bold",
+                  fontSize: 16,
+                  cursor: "pointer",
+                  color: "#fff",
+                  background: "rgba(0,0,0,0.4)",
+                  borderRadius: "50%",
+                  padding: "4px 8px",
+                }}
+                onClick={() => handleDeleteProduct(p.id)}
+              >
+                ❌
+              </div>
+            )}
 
-            <img src={p.image} style={imgStyle} alt={p.title} onClick={() => setModal(p)} />
+            {(p.images || []).map((img, i) => (
+              <img key={i} src={img.url} alt="" style={imgStyle} />
+            ))}
             <h3>{p.title}</h3>
             <p>{p.description}</p>
             <strong style={{ color: "#00cc88" }}>{p.price}</strong>
@@ -300,27 +303,6 @@ export default function Marketplace() {
         ))}
       </div>
 
-      {modal && (
-        <div style={modalOverlay} onClick={() => setModal(null)}>
-          <div style={modalContent} onClick={(e) => e.stopPropagation()}>
-            <img src={modal.image} style={modalImage} alt={modal.title} />
-            <h2>{modal.title}</h2>
-            <p>{modal.description}</p>
-            <p>📂 {modal.category}</p>
-            <p style={{ color: "#00cc88", fontWeight: "bold" }}>{modal.price}</p>
-            <p style={{ fontSize: "12px", color: "#aaa" }}>{modal.time}</p>
-            <a
-              href={`https://wa.me/?text=Hi I'm interested in your ${encodeURIComponent(modal.title)}`}
-              target="_blank"
-              rel="noopener noreferrer"
-              style={waBtnStyle}
-            >
-              💬 WhatsApp
-            </a>
-          </div>
-        </div>
-      )}
-
       {showModal && selectedUser && (
         <SendPrivateMessage
           recipientUID={selectedUser.uid}
@@ -332,23 +314,24 @@ export default function Marketplace() {
     </div>
   );
 }
-
-// Styles (unchanged, from your setup)
 const pageStyle = {
   padding: 20,
   minHeight: "100vh",
-  fontFamily: "Poppins",
+  fontFamily: "Poppins, sans-serif",
   position: "relative",
+  backgroundSize: "cover",
+  backgroundPosition: "center",
+  backgroundRepeat: "no-repeat",
 };
 
 const headerStyle = {
   textAlign: "center",
   margin: "20px 0",
-  fontWeight: "800",
+  fontWeight: "900",
   display: "flex",
   justifyContent: "center",
   flexWrap: "wrap",
-  fontSize: "1.8rem",
+  fontSize: "2rem",
 };
 
 const letterStyle = {
@@ -361,16 +344,17 @@ const letterStyle = {
 
 const searchInput = {
   width: "100%",
-  padding: 10,
+  padding: "12px 16px",
   fontSize: 16,
   borderRadius: 10,
-  margin: "10px 0",
+  marginBottom: 20,
   border: "1px solid #ccc",
+  outline: "none",
 };
 
 const productGrid = {
   display: "grid",
-  gridTemplateColumns: "repeat(auto-fill, minmax(250px, 1fr))",
+  gridTemplateColumns: "repeat(auto-fit, minmax(270px, 1fr))",
   gap: 20,
   marginTop: 20,
 };
@@ -379,31 +363,40 @@ const cardStyle = {
   background: "#fff",
   padding: 15,
   borderRadius: 15,
-  boxShadow: "0 2px 8px rgba(0,0,0,0.2)",
+  boxShadow: "0 4px 12px rgba(0, 0, 0, 0.1)",
   position: "relative",
+  transition: "transform 0.2s ease, box-shadow 0.2s ease",
+  cursor: "default",
+
+  // 👇 Hover effect
+  ":hover": {
+    transform: "scale(1.015)",
+    boxShadow: "0 6px 14px rgba(0, 0, 0, 0.15)",
 };
 
 const imgStyle = {
   width: "100%",
-  height: "200px",
+  height: "180px",
   objectFit: "cover",
   borderRadius: "10px",
-  cursor: "pointer",
+  marginBottom: 10,
 };
 
 const commentInputStyle = {
   width: "100%",
-  padding: 8,
+  padding: 10,
   borderRadius: 8,
   border: "1px solid #ccc",
-  marginTop: 5,
-  background: "#fff",
-  color: "#000",
+  marginTop: 8,
+  fontSize: 14,
+  outline: "none",
 };
 
 const emojiBtnStyle = {
   cursor: "pointer",
   marginRight: 10,
+  fontSize: 18,
+  transition: "transform 0.2s ease",
 };
 
 const waBtnStyle = {
@@ -411,19 +404,21 @@ const waBtnStyle = {
   fontWeight: "bold",
   background: "#25D366",
   color: "#fff",
-  padding: "6px 10px",
+  padding: "6px 12px",
   borderRadius: "6px",
-  marginLeft: 10,
+  fontSize: 14,
 };
 
 const buttonStyle = {
   background: "#00cc88",
   color: "#fff",
-  padding: "6px 12px",
+  padding: "6px 14px",
   borderRadius: 6,
   border: "none",
   cursor: "pointer",
-  marginTop: 5,
+  marginTop: 6,
+  fontWeight: "bold",
+  fontSize: 14,
 };
 
 const socialRowStyle = {
@@ -439,19 +434,19 @@ const modalOverlay = {
   left: 0,
   width: "100vw",
   height: "100vh",
-  background: "rgba(0,0,0,0.5)",
+  background: "rgba(0, 0, 0, 0.6)",
   display: "flex",
   justifyContent: "center",
   alignItems: "center",
-  zIndex: 10,
+  zIndex: 1000,
 };
 
 const modalContent = {
   background: "#fff",
   padding: 20,
-  borderRadius: 10,
+  borderRadius: 12,
+  maxWidth: "420px",
   width: "90%",
-  maxWidth: 400,
   textAlign: "center",
 };
 
@@ -460,4 +455,5 @@ const modalImage = {
   height: "250px",
   objectFit: "cover",
   borderRadius: 10,
+  marginBottom: 12,
 };
