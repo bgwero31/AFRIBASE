@@ -1,7 +1,7 @@
 // Marketplace.js
 import React, { useState, useEffect } from "react";
 import { db } from "../firebase";
-import { ref, push, onValue } from "firebase/database";
+import { ref, push, onValue, update } from "firebase/database";
 import { getAuth } from "firebase/auth";
 import SendPrivateMessage from "../components/SendPrivateMessage";
 
@@ -74,6 +74,7 @@ export default function Marketplace() {
         comments: [],
         ownerUID: user.uid,
         ownerName: user.displayName || "Unknown",
+        ownerPhoneNumber: user.phoneNumber || "", // assuming phone number is available
       });
 
       setTitle("");
@@ -120,6 +121,61 @@ export default function Marketplace() {
 
   const toggleShowComments = (id) => {
     setShowComments({ ...showComments, [id]: !showComments[id] });
+  };
+
+  // Like/dislike toggle logic
+  const toggleLike = async (product) => {
+    const user = auth.currentUser;
+    if (!user) return alert("Please login to like products.");
+
+    const userId = user.uid;
+    let updatedLikes = product.likes || [];
+    let updatedDislikes = product.dislikes || [];
+
+    if (updatedLikes.includes(userId)) {
+      // Remove like
+      updatedLikes = updatedLikes.filter((id) => id !== userId);
+    } else {
+      // Add like and remove dislike if exists
+      updatedLikes.push(userId);
+      updatedDislikes = updatedDislikes.filter((id) => id !== userId);
+    }
+
+    await update(ref(db, `products/${product.id}`), {
+      likes: updatedLikes,
+      dislikes: updatedDislikes,
+    });
+  };
+
+  const toggleDislike = async (product) => {
+    const user = auth.currentUser;
+    if (!user) return alert("Please login to dislike products.");
+
+    const userId = user.uid;
+    let updatedLikes = product.likes || [];
+    let updatedDislikes = product.dislikes || [];
+
+    if (updatedDislikes.includes(userId)) {
+      // Remove dislike
+      updatedDislikes = updatedDislikes.filter((id) => id !== userId);
+    } else {
+      // Add dislike and remove like if exists
+      updatedDislikes.push(userId);
+      updatedLikes = updatedLikes.filter((id) => id !== userId);
+    }
+
+    await update(ref(db, `products/${product.id}`), {
+      likes: updatedLikes,
+      dislikes: updatedDislikes,
+    });
+  };
+
+  // WhatsApp link helper
+  const getWhatsAppLink = (phoneNumber, productTitle) => {
+    if (!phoneNumber) return "#";
+    const phone = phoneNumber.replace(/\D/g, ""); // remove non-digits
+    const text = encodeURIComponent(`Hello, I am interested in your product: ${productTitle}`);
+    return `https://wa.me/${phone}?text=${text}`;
   };
 
   const filtered = products.filter(
@@ -178,10 +234,7 @@ export default function Marketplace() {
         {filtered.map((p) => (
           <div key={p.id} style={cardStyle}>
             {auth.currentUser?.uid === p.ownerUID && (
-              <button
-                onClick={() => deleteFromView(p.id)}
-                style={closeBtnStyle}
-              >
+              <button onClick={() => deleteFromView(p.id)} style={closeBtnStyle}>
                 ❌
               </button>
             )}
@@ -220,9 +273,7 @@ export default function Marketplace() {
                             marginLeft: 5,
                             cursor: "pointer",
                           }}
-                          onClick={() =>
-                            deleteCommentFromView(p.id, c.id)
-                          }
+                          onClick={() => deleteCommentFromView(p.id, c.id)}
                         >
                           ❌
                         </span>
@@ -247,6 +298,42 @@ export default function Marketplace() {
               </button>
             </div>
 
+            <div style={{ marginTop: 8 }}>
+              <button
+                onClick={() => toggleLike(p)}
+                style={{
+                  ...likeBtnStyle,
+                  backgroundColor: p.likes.includes(auth.currentUser?.uid)
+                    ? "#0a0"
+                    : "#ccc",
+                }}
+              >
+                👍 {p.likes.length}
+              </button>
+
+              <button
+                onClick={() => toggleDislike(p)}
+                style={{
+                  ...dislikeBtnStyle,
+                  backgroundColor: p.dislikes.includes(auth.currentUser?.uid)
+                    ? "#a00"
+                    : "#ccc",
+                }}
+              >
+                👎 {p.dislikes.length}
+              </button>
+
+              {/* WhatsApp contact button */}
+              <a
+                href={getWhatsAppLink(p.ownerPhoneNumber, p.title)}
+                target="_blank"
+                rel="noopener noreferrer"
+                style={whatsappBtnStyle}
+              >
+                WhatsApp Seller
+              </a>
+            </div>
+
             <button
               onClick={() => {
                 setSelectedUser({ uid: p.ownerUID, name: p.ownerName });
@@ -263,11 +350,7 @@ export default function Marketplace() {
       {modal && (
         <div style={modalOverlay} onClick={() => setModal(null)}>
           <div style={modalContent} onClick={(e) => e.stopPropagation()}>
-            <img
-              src={modal.image}
-              style={modalImage}
-              alt={modal.title}
-            />
+            <img src={modal.image} style={modalImage} alt={modal.title} />
             <h2>{modal.title}</h2>
             <p>{modal.description}</p>
             <p>📂 {modal.category}</p>
@@ -347,6 +430,34 @@ const buttonStyle = {
   border: "none",
   cursor: "pointer",
   marginTop: 5,
+};
+
+const likeBtnStyle = {
+  padding: "6px 12px",
+  marginRight: 10,
+  borderRadius: 6,
+  border: "none",
+  cursor: "pointer",
+  color: "#fff",
+};
+
+const dislikeBtnStyle = {
+  padding: "6px 12px",
+  marginRight: 10,
+  borderRadius: 6,
+  border: "none",
+  cursor: "pointer",
+  color: "#fff",
+};
+
+const whatsappBtnStyle = {
+  backgroundColor: "#25D366",
+  color: "#fff",
+  padding: "6px 12px",
+  borderRadius: 6,
+  textDecoration: "none",
+  fontWeight: "bold",
+  cursor: "pointer",
 };
 
 const modalOverlay = {
