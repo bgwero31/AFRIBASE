@@ -30,7 +30,7 @@ export default function Profile() {
   const [reply, setReply] = useState("");
   const [outbox, setOutbox] = useState([]);
   const [userMap, setUserMap] = useState({});
-  const myProductIds = useRef([]);
+  const inboxRef = useRef();
   const audio = useRef(null);
 
   useEffect(() => {
@@ -53,50 +53,44 @@ export default function Profile() {
         }
         setUserMap(map);
 
-        const prodSnap = await get(ref(db, "products"));
-        const images = [];
-        const ids = [];
+        const prodSnap = await get(ref(db, `products`));
+        const posts = [];
         if (prodSnap.exists()) {
-          Object.entries(prodSnap.val()).forEach(([id, p]) => {
-            if (p.uid === u.uid) {
-              if (p.image) images.push(p.image);
-              ids.push(id);
-            }
+          Object.values(prodSnap.val()).forEach((p) => {
+            if (p.uid === u.uid && p.image) posts.push(p.image);
           });
         }
-        myProductIds.current = ids;
-        setPostedImages(images);
+        setPostedImages(posts);
 
-        const allInboxRef = ref(db, "inbox");
-        onValue(allInboxRef, (snap) => {
-          const messages = [];
+        inboxRef.current = ref(db, `inbox/${u.uid}`);
+        let firstLoad = true;
+        onValue(inboxRef.current, (snap) => {
           if (snap.exists()) {
-            Object.entries(snap.val()).forEach(([toId, msgs]) => {
-              Object.entries(msgs).forEach(([msgId, msg]) => {
-                if (
-                  msg.toId === u.uid &&
-                  msg.productId &&
-                  myProductIds.current.includes(msg.productId)
-                ) {
-                  messages.push({ ...msg, id: msgId });
-                }
-              });
-            });
+            const msgs = Object.entries(snap.val())
+              .map(([id, m]) => ({ id, ...m }))
+              .filter((m) => m.message && m.fromName);
+            const sorted = [
+              ...msgs.filter((m) => !m.read).sort((a, b) => b.timestamp - a.timestamp),
+              ...msgs.filter((m) => m.read).sort((a, b) => b.timestamp - a.timestamp),
+            ];
+            if (!firstLoad && sorted.length > inbox.length) {
+              audio.current?.play().catch(() => {});
+            }
+            firstLoad = false;
+            setInbox(sorted);
+            setUnreadCount(sorted.filter((m) => !m.read).length);
+          } else {
+            setInbox([]);
+            setUnreadCount(0);
           }
-          const sorted = [
-            ...messages.filter((m) => !m.read).sort((a, b) => b.timestamp - a.timestamp),
-            ...messages.filter((m) => m.read).sort((a, b) => b.timestamp - a.timestamp),
-          ];
-          setInbox(sorted);
-          setUnreadCount(sorted.filter((m) => !m.read).length);
         });
 
-        const allInbox = await get(ref(db, "inbox"));
+        const allInbox = await get(ref(db, `inbox`));
         const sent = [];
         if (allInbox.exists()) {
           Object.entries(allInbox.val()).forEach(([toId, msgs]) => {
             Object.entries(msgs).forEach(([msgId, msg]) => {
-              if (msg.fromId === u.uid) {
+              if (msg.fromId === u.uid && msg.message && msg.fromName) {
                 sent.push({ ...msg, id: msgId, to: toId });
               }
             });
@@ -110,14 +104,6 @@ export default function Profile() {
 
     return () => unsub();
   }, []);
-
-  useEffect(() => {
-    if (unreadCount > 0) {
-      document.title = `(${unreadCount}) Afribase Inbox`;
-    } else {
-      document.title = "Afribase Profile";
-    }
-  }, [unreadCount]);
 
   const handleImageUpload = async (e) => {
     const file = e.target.files[0];
@@ -153,14 +139,13 @@ export default function Profile() {
     const replyData = {
       fromId: user.uid,
       fromName: profileData.name,
-      toId: selectedMsg.fromId,
-      productId: selectedMsg.productId,
       message: reply,
       timestamp: Date.now(),
     };
     await push(ref(db, `inbox/${selectedMsg.fromId}`), replyData);
     setReply("");
     setSelectedMsg(null);
+    alert("Reply sent!");
   };
 
   const deleteMessage = async () => {
@@ -184,70 +169,241 @@ export default function Profile() {
     return `${Math.floor(diff / 86400)}d ago`;
   };
 
-  if (!user) return <p>Loading...</p>;
+  if (!user) return <p style={{ padding: 20 }}>Checking...</p>;
 
   return (
-    <div style={{ padding: 20, fontFamily: "sans-serif", background: "#f9f9f9", color: "#111", minHeight: "100vh" }}>
-      {/* Top Bar */}
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-        <div onClick={() => setMenuOpen(!menuOpen)} style={{ fontSize: 28, cursor: "pointer" }}>
-          ☰ {unreadCount > 0 && <span style={{ background: "red", color: "white", borderRadius: "50%", padding: "2px 8px", fontSize: 14 }}>{unreadCount}</span>}
-        </div>
-        <div style={{ fontSize: 22, fontWeight: "bold" }}>AFRIBASE</div>
+    <div
+      style={{
+        backgroundImage: "url('/assets/IMG-20250620-WA0007.jpg')",
+        backgroundSize: "cover",
+        backgroundPosition: "center",
+        minHeight: "100vh",
+        padding: "20px",
+        display: "flex",
+        justifyContent: "center",
+        alignItems: "flex-start",
+      }}
+    >
+      {/* Hamburger */}
+      <div
+        style={{
+          position: "absolute",
+          top: 20,
+          left: 20,
+          fontSize: 26,
+          cursor: "pointer",
+          zIndex: 20,
+        }}
+        onClick={() => setMenuOpen(!menuOpen)}
+      >
+        ☰
+        {unreadCount > 0 && (
+          <span
+            style={{
+              background: "red",
+              color: "#fff",
+              borderRadius: "50%",
+              padding: "2px 6px",
+              fontSize: "12px",
+              marginLeft: "4px",
+            }}
+          >
+            {unreadCount}
+          </span>
+        )}
       </div>
 
-      {/* Sidebar */}
+      {/* Menu */}
       {menuOpen && (
-        <div style={{ background: "#fff", color: "#111", padding: 15, borderRadius: 10, marginTop: 10 }}>
-          <h3>📥 Inbox</h3>
-          {inbox.length > 0 ? inbox.map((m) => (
-            <div key={m.id} onClick={() => markAsRead(m)} style={{ marginBottom: 10, cursor: "pointer", fontWeight: m.read ? "normal" : "bold" }}>
-              {m.fromName}: {m.message.slice(0, 30)}... <small>({timeAgo(m.timestamp)})</small>
-            </div>
-          )) : <p>No messages yet</p>}
-          <h3>📤 Outbox</h3>
-          {outbox.length > 0 ? outbox.map((m, i) => (
-            <div key={i}>
-              To {userMap[m.to]}: {m.message.slice(0, 30)}... <small>({timeAgo(m.timestamp)})</small>
-            </div>
-          )) : <p>No sent messages</p>}
-          <hr />
-          <p onClick={handleLogout} style={{ color: "red", cursor: "pointer" }}>🚪 Logout</p>
+        <div
+          style={{
+            position: "absolute",
+            top: 60,
+            left: 20,
+            width: "250px",
+            background: "#fff",
+            boxShadow: "4px 4px 12px rgba(0,0,0,0.15)",
+            padding: 15,
+            borderRadius: 12,
+            zIndex: 19,
+          }}
+        >
+          <p style={{ fontWeight: "bold", fontSize: 16, marginBottom: 8 }}>
+            ⚙️ Preferences
+          </p>
+          <p style={{ padding: 10 }}>🌓 Dark/Light toggle (soon)</p>
+          <p
+            onClick={handleLogout}
+            style={{ color: "red", cursor: "pointer" }}
+          >
+            🚪 Logout
+          </p>
         </div>
       )}
 
-      {/* Message Modal */}
-      {selectedMsg && (
-        <div style={{ position: "fixed", top: 0, left: 0, right: 0, bottom: 0, background: "rgba(0,0,0,0.5)", display: "flex", justifyContent: "center", alignItems: "center" }} onClick={() => setSelectedMsg(null)}>
-          <div style={{ background: "#fff", padding: 20, borderRadius: 10, width: "90%", maxWidth: 400, color: "#000" }} onClick={(e) => e.stopPropagation()}>
-            <h3>From: {selectedMsg.fromName}</h3>
-            <p>{selectedMsg.message}</p>
-            <p><small>{timeAgo(selectedMsg.timestamp)}</small></p>
-            <input value={reply} onChange={(e) => setReply(e.target.value)} placeholder="Reply..." style={{ width: "100%", padding: 8, marginBottom: 10 }} />
-            <button onClick={sendReply} style={{ marginRight: 10 }}>Send</button>
-            <button onClick={deleteMessage} style={{ color: "red" }}>Delete</button>
-          </div>
+      {/* Card */}
+      <div
+        style={{
+          background: "#fff",
+          borderRadius: "20px",
+          padding: "20px",
+          boxShadow: "0 4px 12px rgba(0,0,0,0.1)",
+          maxWidth: "400px",
+          width: "100%",
+        }}
+      >
+        <div
+          style={{
+            width: "80px",
+            height: "80px",
+            borderRadius: "50%",
+            overflow: "hidden",
+            margin: "0 auto 10px",
+            cursor: "pointer",
+          }}
+          onClick={() => document.getElementById("fileInput").click()}
+        >
+          {profileData.image ? (
+            <img
+              src={profileData.image}
+              alt="profile"
+              style={{ width: "100%", height: "100%", objectFit: "cover" }}
+            />
+          ) : (
+            <p style={{ fontSize: 30, marginTop: 20 }}>👤</p>
+          )}
         </div>
-      )}
-
-      {/* Profile Card */}
-      <div style={{ background: "#fff", borderRadius: 20, padding: 30, maxWidth: 400, margin: "40px auto", textAlign: "center" }}>
-        <div style={{ width: 100, height: 100, borderRadius: "50%", background: "#ccc", margin: "0 auto 20px", overflow: "hidden", cursor: "pointer" }} onClick={() => document.getElementById("fileInput").click()}>
-          {profileData.image ? <img src={profileData.image} alt="profile" style={{ width: "100%", height: "100%" }} /> : <span style={{ fontSize: 32 }}>👤</span>}
-        </div>
-        <input type="file" id="fileInput" style={{ display: "none" }} onChange={handleImageUpload} />
+        <input
+          id="fileInput"
+          type="file"
+          accept="image/*"
+          onChange={handleImageUpload}
+          style={{ display: "none" }}
+        />
         <h2>{profileData.name}</h2>
         <p>{profileData.email}</p>
         {uploading && <p>Uploading...</p>}
         <button onClick={handleNameChange}>✏️ Edit Name</button>
 
-        <h3 style={{ marginTop: 30 }}>📸 Your Posts</h3>
-        <div style={{ display: "flex", flexWrap: "wrap", gap: 10, justifyContent: "center", marginTop: 10 }}>
-          {postedImages.map((img, i) => (
-            <img key={i} src={img} alt="post" style={{ width: 100, height: 100, objectFit: "cover", borderRadius: 10 }} />
-          ))}
+        <h3>📥 Inbox</h3>
+        <div style={{ maxHeight: 150, overflowY: "auto", marginBottom: 10 }}>
+          {inbox.length ? (
+            inbox.map((m) => (
+              <p
+                key={m.id}
+                onClick={() => markAsRead(m)}
+                style={{
+                  margin: "5px 0",
+                  cursor: "pointer",
+                  fontWeight: m.read ? "normal" : "bold",
+                }}
+              >
+                <strong>{m.fromName}</strong>: {m.message.slice(0, 30)}...
+                <small> ({timeAgo(m.timestamp)})</small>
+              </p>
+            ))
+          ) : (
+            <p>No messages</p>
+          )}
+        </div>
+
+        <h3>📤 Outbox</h3>
+        <div style={{ maxHeight: 150, overflowY: "auto", marginBottom: 10 }}>
+          {outbox.length ? (
+            outbox.map((m, i) => (
+              <p key={i}>
+                To <strong>{userMap[m.to]}</strong>:{" "}
+                {m.message.slice(0, 30)}...
+                <small> ({timeAgo(m.timestamp)})</small>
+              </p>
+            ))
+          ) : (
+            <p>No sent messages</p>
+          )}
+        </div>
+
+        <h3>📸 Your Posts</h3>
+        <div
+          style={{
+            display: "flex",
+            flexWrap: "wrap",
+            gap: "10px",
+            justifyContent: "center",
+            marginTop: "10px",
+          }}
+        >
+          {postedImages.length ? (
+            postedImages.map((img, i) => (
+              <img
+                key={i}
+                src={img}
+                alt="post"
+                style={{
+                  width: "100px",
+                  height: "100px",
+                  objectFit: "cover",
+                  borderRadius: "10px",
+                }}
+              />
+            ))
+          ) : (
+            <p>No posts yet</p>
+          )}
         </div>
       </div>
+
+      {/* Message Modal */}
+      {selectedMsg && (
+        <div
+          style={{
+            position: "fixed",
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            background: "rgba(0,0,0,0.4)",
+            display: "flex",
+            justifyContent: "center",
+            alignItems: "center",
+            zIndex: 100,
+          }}
+          onClick={() => setSelectedMsg(null)}
+        >
+          <div
+            style={{
+              background: "#fff",
+              padding: "20px",
+              borderRadius: "10px",
+              width: "90%",
+              maxWidth: "400px",
+              textAlign: "center",
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h3>📨 Message</h3>
+            <p>
+              <strong>From:</strong> {selectedMsg.fromName}
+            </p>
+            <p>{selectedMsg.message}</p>
+            <input
+              style={{
+                width: "90%",
+                padding: "10px",
+                borderRadius: "8px",
+                border: "1px solid #ccc",
+              }}
+              value={reply}
+              onChange={(e) => setReply(e.target.value)}
+              placeholder="Reply..."
+            />
+            <button onClick={sendReply}>Send</button>
+            <button onClick={deleteMessage} style={{ color: "red" }}>
+              Delete
+            </button>
+            <button onClick={() => setSelectedMsg(null)}>Close</button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
