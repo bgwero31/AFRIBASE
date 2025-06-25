@@ -7,150 +7,86 @@ import {
 import {
   ref,
   get,
-  child,
   update,
-  remove,
   push,
   onValue,
 } from "firebase/database";
 import { db } from "../firebase";
 
 const auth = getAuth();
-const imgbbKey = "30df4aa05f1af3b3b58ee8a74639e5cf";
 
 export default function Profile() {
   const [user, setUser] = useState(null);
   const [profileData, setProfileData] = useState({});
-  const [uploading, setUploading] = useState(false);
-  const [menuOpen, setMenuOpen] = useState(false);
-  const [postedImages, setPostedImages] = useState([]);
+  const [postedProducts, setPostedProducts] = useState([]);
   const [inbox, setInbox] = useState([]);
+  const [outbox, setOutbox] = useState([]);
   const [unreadCount, setUnreadCount] = useState(0);
+  const [showInbox, setShowInbox] = useState(false);
+  const [showOutbox, setShowOutbox] = useState(false);
   const [selectedMsg, setSelectedMsg] = useState(null);
   const [reply, setReply] = useState("");
-  const [outbox, setOutbox] = useState([]);
   const [userMap, setUserMap] = useState({});
   const inboxRef = useRef();
-  const audio = useRef(null);
-
-  useEffect(() => {
-    audio.current = new Audio("/notify.mp3");
-  }, []);
 
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, async (u) => {
-      if (u) {
-        setUser(u);
-        const userSnap = await get(child(ref(db), `users/${u.uid}`));
-        if (userSnap.exists()) setProfileData(userSnap.val());
+      if (!u) return setUser(null);
+      setUser(u);
 
-        const allUsersSnap = await get(ref(db, "users"));
-        const map = {};
-        if (allUsersSnap.exists()) {
-          Object.entries(allUsersSnap.val()).forEach(([id, d]) => {
-            map[id] = d.name || "Unknown";
-          });
-        }
-        setUserMap(map);
+      const snap = await get(ref(db, `users/${u.uid}`));
+      if (snap.exists()) setProfileData(snap.val());
 
-        const prodSnap = await get(ref(db, `products`));
-        const posts = [];
-        if (prodSnap.exists()) {
-          Object.values(prodSnap.val()).forEach((p) => {
-            if (p.uid === u.uid && p.image) posts.push(p.image);
-          });
-        }
-        setPostedImages(posts);
-
-        inboxRef.current = ref(db, `inbox/${u.uid}`);
-        let firstLoad = true;
-        onValue(inboxRef.current, (snap) => {
-          if (snap.exists()) {
-            const msgs = Object.entries(snap.val())
-              .map(([id, m]) => ({ id, ...m }))
-              .filter((m) => m.message && m.fromName);
-            const sorted = [
-              ...msgs.filter((m) => !m.read).sort((a, b) => b.timestamp - a.timestamp),
-              ...msgs.filter((m) => m.read).sort((a, b) => b.timestamp - a.timestamp),
-            ];
-            if (!firstLoad && sorted.length > inbox.length) {
-              audio.current?.play().catch(() => {});
-            }
-            firstLoad = false;
-            setInbox(sorted);
-            setUnreadCount(sorted.filter((m) => !m.read).length);
-          } else {
-            setInbox([]);
-            setUnreadCount(0);
-          }
+      const productsSnap = await get(ref(db, "products"));
+      const myProducts = [];
+      if (productsSnap.exists()) {
+        Object.entries(productsSnap.val()).forEach(([id, prod]) => {
+          prod.uid === u.uid && myProducts.push({ id, ...prod });
         });
-
-        const allInbox = await get(ref(db, `inbox`));
-        const sent = [];
-        if (allInbox.exists()) {
-          Object.entries(allInbox.val()).forEach(([toId, msgs]) => {
-            Object.entries(msgs).forEach(([msgId, msg]) => {
-              if (msg.fromId === u.uid && msg.message && msg.fromName) {
-                sent.push({ ...msg, id: msgId, to: toId });
-              }
-            });
-          });
-        }
-        setOutbox(sent.sort((a, b) => b.timestamp - a.timestamp));
-      } else {
-        setUser(null);
       }
-    });
+      setPostedProducts(myProducts);
 
-    return () => unsub();
+      const uSnap = await get(ref(db, "users"));
+      const map = {};
+      if (uSnap.exists()) Object.entries(uSnap.val()).forEach(([id, d]) => map[id] = d.name);
+      setUserMap(map);
+
+      // listen only to messages tied to your products
+      inboxRef.current = ref(db, "inbox");
+      onValue(inboxRef.current, async (snap) => {
+        const all = snap.exists() ? Object.values(snap.val()).flatMap(Object.values) : [];
+        const filtered = all.filter(m =>
+          m.fromId && m.toId === u.uid && myProducts.some(p => p.id === m.productId)
+        );
+        setInbox(filtered);
+        setUnreadCount(filtered.filter(m => !m.read).length);
+      });
+
+      const allSnap = await get(ref(db, "inbox"));
+      const sent = [];
+      if (allSnap.exists()) {
+        Object.entries(allSnap.val()).forEach(([toId, msgs]) => {
+          Object.entries(msgs).forEach(([mid, m]) => {
+            if (m.fromId === u.uid) sent.push({ ...m, id: mid, to: toId });
+          });
+        });
+      }
+      setOutbox(sent);
+    });
+    return ()=>unsub();
   }, []);
 
-  const handleImageUpload = async (e) => {
-    const file = e.target.files[0];
-    if (!file || !user) return;
-    setUploading(true);
-    const formData = new FormData();
-    formData.append("image", file);
-    const res = await fetch(`https://api.imgbb.com/1/upload?key=${imgbbKey}`, {
-      method: "POST",
-      body: formData,
-    });
-    const data = await res.json();
-    const url = data.data.url;
-    await update(ref(db, `users/${user.uid}`), { image: url });
-    setProfileData((prev) => ({ ...prev, image: url }));
-    setUploading(false);
-  };
-
-  const handleNameChange = async () => {
-    const name = prompt("Enter new name:");
-    if (!name || !user) return;
-    await update(ref(db, `users/${user.uid}`), { name });
-    setProfileData((prev) => ({ ...prev, name }));
-  };
-
-  const handleLogout = async () => {
-    await signOut(auth);
-    window.location.href = "/";
-  };
-
   const sendReply = async () => {
-    if (!reply || !selectedMsg || !user) return;
-    const replyData = {
+    if (!reply || !selectedMsg) return;
+    await push(ref(db, `inbox/${selectedMsg.fromId}`), {
+      ...selectedMsg,
       fromId: user.uid,
       fromName: profileData.name,
       message: reply,
       timestamp: Date.now(),
-    };
-    await push(ref(db, `inbox/${selectedMsg.fromId}`), replyData);
+      productId: selectedMsg.productId,
+    });
     setReply("");
-    setSelectedMsg(null);
-    alert("Reply sent!");
-  };
-
-  const deleteMessage = async () => {
-    if (!user || !selectedMsg) return;
-    await remove(ref(db, `inbox/${user.uid}/${selectedMsg.id}`));
     setSelectedMsg(null);
   };
 
@@ -161,249 +97,102 @@ export default function Profile() {
     setSelectedMsg(msg);
   };
 
-  const timeAgo = (ts) => {
-    const diff = Math.floor((Date.now() - ts) / 1000);
-    if (diff < 60) return `${diff}s ago`;
-    if (diff < 3600) return `${Math.floor(diff / 60)}m ago`;
-    if (diff < 86400) return `${Math.floor(diff / 3600)}h ago`;
-    return `${Math.floor(diff / 86400)}d ago`;
-  };
+  const formatTime = ts => new Date(ts).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
 
-  if (!user) return <p style={{ padding: 20 }}>Checking...</p>;
+  if (!user) return <p>Checking...</p>;
 
   return (
-    <div
-      style={{
-        backgroundImage: "url('/assets/IMG-20250620-WA0007.jpg')",
-        backgroundSize: "cover",
-        backgroundPosition: "center",
-        minHeight: "100vh",
-        padding: "20px",
-        display: "flex",
-        justifyContent: "center",
-        alignItems: "flex-start",
-      }}
-    >
-      {/* Hamburger */}
-      <div
-        style={{
-          position: "absolute",
-          top: 20,
-          left: 20,
-          fontSize: 26,
-          cursor: "pointer",
-          zIndex: 20,
-        }}
-        onClick={() => setMenuOpen(!menuOpen)}
-      >
-        ☰
-        {unreadCount > 0 && (
-          <span
-            style={{
-              background: "red",
-              color: "#fff",
-              borderRadius: "50%",
-              padding: "2px 6px",
-              fontSize: "12px",
-              marginLeft: "4px",
-            }}
-          >
-            {unreadCount}
-          </span>
-        )}
+    <div style={styles.container}>
+      <div style={styles.menu}>
+        <button onClick={() => setShowInbox(!showInbox)}>
+          📥 Inbox {unreadCount > 0 && `(${unreadCount})`}
+        </button>
+        <button onClick={() => setShowOutbox(!showOutbox)}>
+          📤 Outbox ({outbox.length})
+        </button>
+        <button onClick={() => alert("Open Settings")}>⚙️ Settings</button>
+        <button onClick={() => alert("Toggle Theme")}>🌓</button>
+        <button onClick={() => signOut(auth)}>🚪 Logout</button>
       </div>
 
-      {/* Menu */}
-      {menuOpen && (
-        <div
-          style={{
-            position: "absolute",
-            top: 60,
-            left: 20,
-            width: "250px",
-            background: "#fff",
-            boxShadow: "4px 4px 12px rgba(0,0,0,0.15)",
-            padding: 15,
-            borderRadius: 12,
-            zIndex: 19,
-          }}
-        >
-          <p style={{ fontWeight: "bold", fontSize: 16, marginBottom: 8 }}>
-            ⚙️ Preferences
-          </p>
-          <p style={{ padding: 10 }}>🌓 Dark/Light toggle (soon)</p>
-          <p
-            onClick={handleLogout}
-            style={{ color: "red", cursor: "pointer" }}
-          >
-            🚪 Logout
-          </p>
-        </div>
-      )}
+      <div style={styles.card}>
+        <img src={profileData.image} alt="profile" style={styles.avatar} />
+        <h3>{profileData.name}</h3>
+        <p style={{ color: "gray" }}>{profileData.email}</p>
 
-      {/* Card */}
-      <div
-        style={{
-          background: "#fff",
-          borderRadius: "20px",
-          padding: "20px",
-          boxShadow: "0 4px 12px rgba(0,0,0,0.1)",
-          maxWidth: "400px",
-          width: "100%",
-        }}
-      >
-        <div
-          style={{
-            width: "80px",
-            height: "80px",
-            borderRadius: "50%",
-            overflow: "hidden",
-            margin: "0 auto 10px",
-            cursor: "pointer",
-          }}
-          onClick={() => document.getElementById("fileInput").click()}
-        >
-          {profileData.image ? (
-            <img
-              src={profileData.image}
-              alt="profile"
-              style={{ width: "100%", height: "100%", objectFit: "cover" }}
-            />
-          ) : (
-            <p style={{ fontSize: 30, marginTop: 20 }}>👤</p>
-          )}
-        </div>
-        <input
-          id="fileInput"
-          type="file"
-          accept="image/*"
-          onChange={handleImageUpload}
-          style={{ display: "none" }}
-        />
-        <h2>{profileData.name}</h2>
-        <p>{profileData.email}</p>
-        {uploading && <p>Uploading...</p>}
-        <button onClick={handleNameChange}>✏️ Edit Name</button>
-
-        <h3>📥 Inbox</h3>
-        <div style={{ maxHeight: 150, overflowY: "auto", marginBottom: 10 }}>
-          {inbox.length ? (
-            inbox.map((m) => (
-              <p
-                key={m.id}
-                onClick={() => markAsRead(m)}
-                style={{
-                  margin: "5px 0",
-                  cursor: "pointer",
-                  fontWeight: m.read ? "normal" : "bold",
-                }}
-              >
-                <strong>{m.fromName}</strong>: {m.message.slice(0, 30)}...
-                <small> ({timeAgo(m.timestamp)})</small>
-              </p>
-            ))
-          ) : (
-            <p>No messages</p>
-          )}
-        </div>
-
-        <h3>📤 Outbox</h3>
-        <div style={{ maxHeight: 150, overflowY: "auto", marginBottom: 10 }}>
-          {outbox.length ? (
-            outbox.map((m, i) => (
-              <p key={i}>
-                To <strong>{userMap[m.to]}</strong>:{" "}
-                {m.message.slice(0, 30)}...
-                <small> ({timeAgo(m.timestamp)})</small>
-              </p>
-            ))
-          ) : (
-            <p>No sent messages</p>
-          )}
-        </div>
-
-        <h3>📸 Your Posts</h3>
-        <div
-          style={{
-            display: "flex",
-            flexWrap: "wrap",
-            gap: "10px",
-            justifyContent: "center",
-            marginTop: "10px",
-          }}
-        >
-          {postedImages.length ? (
-            postedImages.map((img, i) => (
-              <img
-                key={i}
-                src={img}
-                alt="post"
-                style={{
-                  width: "100px",
-                  height: "100px",
-                  objectFit: "cover",
-                  borderRadius: "10px",
-                }}
-              />
-            ))
-          ) : (
-            <p>No posts yet</p>
-          )}
-        </div>
-      </div>
-
-      {/* Message Modal */}
-      {selectedMsg && (
-        <div
-          style={{
-            position: "fixed",
-            top: 0,
-            left: 0,
-            right: 0,
-            bottom: 0,
-            background: "rgba(0,0,0,0.4)",
-            display: "flex",
-            justifyContent: "center",
-            alignItems: "center",
-            zIndex: 100,
-          }}
-          onClick={() => setSelectedMsg(null)}
-        >
-          <div
-            style={{
-              background: "#fff",
-              padding: "20px",
-              borderRadius: "10px",
-              width: "90%",
-              maxWidth: "400px",
-              textAlign: "center",
-            }}
-            onClick={(e) => e.stopPropagation()}
-          >
-            <h3>📨 Message</h3>
-            <p>
-              <strong>From:</strong> {selectedMsg.fromName}
-            </p>
-            <p>{selectedMsg.message}</p>
-            <input
-              style={{
-                width: "90%",
-                padding: "10px",
-                borderRadius: "8px",
-                border: "1px solid #ccc",
-              }}
-              value={reply}
-              onChange={(e) => setReply(e.target.value)}
-              placeholder="Reply..."
-            />
-            <button onClick={sendReply}>Send</button>
-            <button onClick={deleteMessage} style={{ color: "red" }}>
-              Delete
-            </button>
-            <button onClick={() => setSelectedMsg(null)}>Close</button>
+        {showInbox && (
+          <div>
+            <h4>Inbox</h4>
+            {inbox.map(m => (
+              <div key={m.id} style={styles.message} onClick={() => markAsRead(m)}>
+                <p><b>{m.fromName}</b> <small>{formatTime(m.timestamp)}</small></p>
+                <p>{m.message}</p>
+              </div>
+            ))}
           </div>
+        )}
+
+        {showOutbox && (
+          <div>
+            <h4>Outbox</h4>
+            {outbox.map((m, i) => (
+              <div key={i} style={styles.message}>
+                <p><b>To {userMap[m.toId]}</b> <small>{formatTime(m.timestamp)}</small></p>
+                <p>{m.message}</p>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {selectedMsg && (
+          <div style={styles.modalOverlay} onClick={() => setSelectedMsg(null)}>
+            <div style={styles.modal} onClick={e => e.stopPropagation()}>
+              <p><b>Reply to {selectedMsg.fromName}</b></p>
+              <textarea
+                value={reply}
+                onChange={e => setReply(e.target.value)}
+                style={styles.textarea}
+              />
+              <button onClick={sendReply}>Send</button>
+              <button onClick={() => setSelectedMsg(null)}>Close</button>
+            </div>
+          </div>
+        )}
+
+        <h4>Your Products</h4>
+        <div style={styles.productsGrid}>
+          {postedProducts.map(p => (
+            <img key={p.id} src={p.image} alt="prod" style={styles.prodImg} />
+          ))}
         </div>
-      )}
+      </div>
     </div>
   );
 }
+
+const styles = {
+  container: {
+    backgroundImage: "url('/assets/IMG-20250620-WA0007.jpg')",
+    minHeight: "100vh", padding:20, display: "flex", justifyContent:"center"
+  },
+  menu: { position: "absolute", top:20, left:20, display:"flex", gap:10, flexWrap:"wrap" },
+  card: {
+    background:"rgba(255,255,255,0.8)", padding:20,
+    borderRadius:20, width:360, textAlign:"center"
+  },
+  avatar: { width:80, height:80, borderRadius:40, margin:"auto", display:"block" },
+  message: {
+    margin:5, padding:5,
+    border:"1px solid #ddd", borderRadius:5, cursor:"pointer",
+  },
+  modalOverlay: {
+    position:"fixed", top:0, left:0, right:0, bottom:0,
+    background:"rgba(0,0,0,0.5)", display:"flex", alignItems:"center", justifyContent:"center"
+  },
+  modal: {
+    background:"#fff", padding:20, borderRadius:10, width:300
+  },
+  textarea: { width:"100%", height:60, marginBottom:10 },
+  productsGrid: { display:"flex", flexWrap:"wrap", gap:10, justifyContent:"center" },
+  prodImg: { width:80, height:80, borderRadius:10, objectFit:"cover" }
+};
