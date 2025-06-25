@@ -1,7 +1,7 @@
 // Marketplace.js
 import React, { useState, useEffect } from "react";
 import { db } from "../firebase";
-import { ref, push, onValue } from "firebase/database";
+import { ref, push, onValue, update, remove } from "firebase/database";
 import { getAuth } from "firebase/auth";
 import SendPrivateMessage from "../components/SendPrivateMessage";
 
@@ -21,7 +21,6 @@ export default function Marketplace() {
   const [showModal, setShowModal] = useState(false);
   const [selectedUser, setSelectedUser] = useState(null);
   const [uploading, setUploading] = useState(false);
-  const [hiddenProducts, setHiddenProducts] = useState([]);
   const auth = getAuth();
 
   useEffect(() => {
@@ -74,6 +73,7 @@ export default function Marketplace() {
         comments: [],
         ownerUID: user.uid,
         ownerName: user.displayName || "Unknown",
+        ownerPhoneNumber: user.phoneNumber || "",
       });
 
       setTitle("");
@@ -104,39 +104,50 @@ export default function Marketplace() {
     setCommentInputs({ ...commentInputs, [id]: "" });
   };
 
-  const deleteFromView = (id) => {
-    setHiddenProducts((prev) => [...prev, id]);
+  const deleteProduct = async (id) => {
+    const confirm = window.confirm("Delete this product?");
+    if (!confirm) return;
+    await remove(ref(db, `products/${id}`));
   };
 
-  const deleteCommentFromView = (productId, commentId) => {
-    setProducts((prev) =>
-      prev.map((p) =>
-        p.id === productId
-          ? { ...p, comments: p.comments.filter((c) => c.id !== commentId) }
-          : p
-      )
-    );
+  const toggleLike = async (product) => {
+    const user = auth.currentUser;
+    if (!user) return alert("Login to like.");
+
+    const uid = user.uid;
+    const likes = product.likes || [];
+    const updatedLikes = likes.includes(uid)
+      ? likes.filter((id) => id !== uid)
+      : [...likes, uid];
+
+    await update(ref(db, `products/${product.id}`), {
+      likes: updatedLikes,
+    });
   };
 
-  const toggleShowComments = (id) => {
-    setShowComments({ ...showComments, [id]: !showComments[id] });
+  const toggleDislike = async (product) => {
+    const user = auth.currentUser;
+    if (!user) return alert("Login to dislike.");
+
+    const uid = user.uid;
+    const dislikes = product.dislikes || [];
+    const updatedDislikes = dislikes.includes(uid)
+      ? dislikes.filter((id) => id !== uid)
+      : [...dislikes, uid];
+
+    await update(ref(db, `products/${product.id}`), {
+      dislikes: updatedDislikes,
+    });
   };
 
   const filtered = products.filter(
     (p) =>
-      !hiddenProducts.includes(p.id) &&
-      (p.title.toLowerCase().includes(search.toLowerCase()) ||
-        p.description.toLowerCase().includes(search.toLowerCase()))
+      p.title.toLowerCase().includes(search.toLowerCase()) ||
+      p.description.toLowerCase().includes(search.toLowerCase())
   );
 
   return (
-    <div
-      style={{
-        ...pageStyle,
-        backgroundImage: 'url("/assets/IMG-20250620-WA0005.jpg")',
-        backgroundSize: "cover",
-      }}
-    >
+    <div style={pageStyle}>
       <input
         style={searchInput}
         placeholder="🔍 Search products..."
@@ -178,10 +189,7 @@ export default function Marketplace() {
         {filtered.map((p) => (
           <div key={p.id} style={cardStyle}>
             {auth.currentUser?.uid === p.ownerUID && (
-              <button
-                onClick={() => deleteFromView(p.id)}
-                style={closeBtnStyle}
-              >
+              <button onClick={() => deleteProduct(p.id)} style={closeBtnStyle}>
                 ❌
               </button>
             )}
@@ -199,34 +207,19 @@ export default function Marketplace() {
             <div style={{ fontSize: "12px", color: "#333" }}>{p.time}</div>
 
             <div>
-              <button onClick={() => toggleShowComments(p.id)}>
+              <button onClick={() => toggleLike(p)}>👍 {p.likes.length}</button>
+              <button onClick={() => toggleDislike(p)}>👎 {p.dislikes.length}</button>
+            </div>
+
+            <div>
+              <button onClick={() => setShowComments({ ...showComments, [p.id]: !showComments[p.id] })}>
                 💬 Comments ({p.comments.length})
               </button>
               {showComments[p.id] && (
-                <div
-                  style={{
-                    maxHeight: "100px",
-                    overflowY: "auto",
-                    marginTop: "5px",
-                  }}
-                >
+                <div style={{ maxHeight: "100px", overflowY: "auto", marginTop: "5px" }}>
                   {p.comments.map((c) => (
                     <p key={c.id}>
                       <strong>{c.name}</strong>: {c.text}
-                      {auth.currentUser?.uid === c.uid && (
-                        <span
-                          style={{
-                            color: "red",
-                            marginLeft: 5,
-                            cursor: "pointer",
-                          }}
-                          onClick={() =>
-                            deleteCommentFromView(p.id, c.id)
-                          }
-                        >
-                          ❌
-                        </span>
-                      )}
                     </p>
                   ))}
                 </div>
@@ -236,10 +229,7 @@ export default function Marketplace() {
                 placeholder="Add a comment..."
                 value={commentInputs[p.id] || ""}
                 onChange={(e) =>
-                  setCommentInputs({
-                    ...commentInputs,
-                    [p.id]: e.target.value,
-                  })
+                  setCommentInputs({ ...commentInputs, [p.id]: e.target.value })
                 }
               />
               <button style={buttonStyle} onClick={() => handleComment(p.id)}>
@@ -263,11 +253,7 @@ export default function Marketplace() {
       {modal && (
         <div style={modalOverlay} onClick={() => setModal(null)}>
           <div style={modalContent} onClick={(e) => e.stopPropagation()}>
-            <img
-              src={modal.image}
-              style={modalImage}
-              alt={modal.title}
-            />
+            <img src={modal.image} style={modalImage} alt={modal.title} />
             <h2>{modal.title}</h2>
             <p>{modal.description}</p>
             <p>📂 {modal.category}</p>
@@ -294,7 +280,6 @@ const pageStyle = {
   padding: 20,
   minHeight: "100vh",
   fontFamily: "Poppins",
-  position: "relative",
 };
 
 const searchInput = {
@@ -335,8 +320,6 @@ const commentStyle = {
   borderRadius: 8,
   border: "1px solid #ccc",
   marginTop: 5,
-  background: "#fff",
-  color: "#000",
 };
 
 const buttonStyle = {
