@@ -30,7 +30,7 @@ export default function Profile() {
   const [reply, setReply] = useState("");
   const [outbox, setOutbox] = useState([]);
   const [userMap, setUserMap] = useState({});
-  const inboxRef = useRef();
+  const myProductIds = useRef([]);
   const audio = useRef(null);
 
   useEffect(() => {
@@ -41,7 +41,6 @@ export default function Profile() {
     const unsub = onAuthStateChanged(auth, async (u) => {
       if (u) {
         setUser(u);
-
         const userSnap = await get(child(ref(db), `users/${u.uid}`));
         if (userSnap.exists()) setProfileData(userSnap.val());
 
@@ -55,44 +54,43 @@ export default function Profile() {
         setUserMap(map);
 
         const prodSnap = await get(ref(db, "products"));
-        const posts = [];
-        const myProductIds = [];
+        const images = [];
+        const ids = [];
         if (prodSnap.exists()) {
           Object.entries(prodSnap.val()).forEach(([id, p]) => {
-            if (p.uid === u.uid && p.image) {
-              posts.push(p.image);
-              myProductIds.push(id);
+            if (p.uid === u.uid) {
+              if (p.image) images.push(p.image);
+              ids.push(id);
             }
           });
         }
-        setPostedImages(posts);
+        myProductIds.current = ids;
+        setPostedImages(images);
 
-        // ✅ Listen to inbox but filter only messages about your products
         const allInboxRef = ref(db, "inbox");
         onValue(allInboxRef, (snap) => {
-          const results = [];
+          const messages = [];
           if (snap.exists()) {
             Object.entries(snap.val()).forEach(([toId, msgs]) => {
               Object.entries(msgs).forEach(([msgId, msg]) => {
                 if (
                   msg.toId === u.uid &&
                   msg.productId &&
-                  myProductIds.includes(msg.productId)
+                  myProductIds.current.includes(msg.productId)
                 ) {
-                  results.push({ ...msg, id: msgId });
+                  messages.push({ ...msg, id: msgId });
                 }
               });
             });
           }
           const sorted = [
-            ...results.filter((m) => !m.read).sort((a, b) => b.timestamp - a.timestamp),
-            ...results.filter((m) => m.read).sort((a, b) => b.timestamp - a.timestamp),
+            ...messages.filter((m) => !m.read).sort((a, b) => b.timestamp - a.timestamp),
+            ...messages.filter((m) => m.read).sort((a, b) => b.timestamp - a.timestamp),
           ];
           setInbox(sorted);
           setUnreadCount(sorted.filter((m) => !m.read).length);
         });
 
-        // ✅ Load outbox
         const allInbox = await get(ref(db, "inbox"));
         const sent = [];
         if (allInbox.exists()) {
@@ -112,6 +110,14 @@ export default function Profile() {
 
     return () => unsub();
   }, []);
+
+  useEffect(() => {
+    if (unreadCount > 0) {
+      document.title = `(${unreadCount}) Afribase Inbox`;
+    } else {
+      document.title = "Afribase Profile";
+    }
+  }, [unreadCount]);
 
   const handleImageUpload = async (e) => {
     const file = e.target.files[0];
@@ -181,235 +187,67 @@ export default function Profile() {
   if (!user) return <p>Loading...</p>;
 
   return (
-    <div style={styles.container}>
-      <div style={styles.hamburger} onClick={() => setMenuOpen(!menuOpen)}>
-        ☰
-        {unreadCount > 0 && (
-          <span style={styles.badge}>{unreadCount}</span>
-        )}
+    <div style={{ padding: 20, fontFamily: "sans-serif", background: "#f9f9f9", color: "#111", minHeight: "100vh" }}>
+      {/* Top Bar */}
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+        <div onClick={() => setMenuOpen(!menuOpen)} style={{ fontSize: 28, cursor: "pointer" }}>
+          ☰ {unreadCount > 0 && <span style={{ background: "red", color: "white", borderRadius: "50%", padding: "2px 8px", fontSize: 14 }}>{unreadCount}</span>}
+        </div>
+        <div style={{ fontSize: 22, fontWeight: "bold" }}>AFRIBASE</div>
       </div>
 
+      {/* Sidebar */}
       {menuOpen && (
-        <div style={styles.menu}>
-          <p style={styles.menuTitle}>📥 Inbox</p>
-          {inbox.length ? (
-            inbox.map((m) => (
-              <p
-                key={m.id}
-                onClick={() => markAsRead(m)}
-                style={{
-                  ...styles.menuItem,
-                  fontWeight: m.read ? "normal" : "bold",
-                }}
-              >
-                <strong>{m.fromName}</strong>: {m.message.slice(0, 30)}...{" "}
-                <small>({timeAgo(m.timestamp)})</small>
-              </p>
-            ))
-          ) : (
-            <p style={styles.menuItem}>No messages</p>
-          )}
+        <div style={{ background: "#fff", color: "#111", padding: 15, borderRadius: 10, marginTop: 10 }}>
+          <h3>📥 Inbox</h3>
+          {inbox.length > 0 ? inbox.map((m) => (
+            <div key={m.id} onClick={() => markAsRead(m)} style={{ marginBottom: 10, cursor: "pointer", fontWeight: m.read ? "normal" : "bold" }}>
+              {m.fromName}: {m.message.slice(0, 30)}... <small>({timeAgo(m.timestamp)})</small>
+            </div>
+          )) : <p>No messages yet</p>}
+          <h3>📤 Outbox</h3>
+          {outbox.length > 0 ? outbox.map((m, i) => (
+            <div key={i}>
+              To {userMap[m.to]}: {m.message.slice(0, 30)}... <small>({timeAgo(m.timestamp)})</small>
+            </div>
+          )) : <p>No sent messages</p>}
           <hr />
-          <p style={styles.menuTitle}>📤 Outbox</p>
-          {outbox.length ? (
-            outbox.map((m, i) => (
-              <p key={i} style={styles.menuItem}>
-                To <strong>{userMap[m.to]}</strong>:{" "}
-                {m.message.slice(0, 30)}... ({timeAgo(m.timestamp)})
-              </p>
-            ))
-          ) : (
-            <p style={styles.menuItem}>No sent messages</p>
-          )}
-          <hr />
-          <p style={styles.menuItem} onClick={() => alert("Settings soon")}>⚙️ Settings</p>
-          <p style={styles.menuItem} onClick={() => alert("Theme soon")}>🌓 Theme</p>
-          <p style={{ ...styles.menuItem, color: "red" }} onClick={handleLogout}>
-            🚪 Logout
-          </p>
+          <p onClick={handleLogout} style={{ color: "red", cursor: "pointer" }}>🚪 Logout</p>
         </div>
       )}
 
+      {/* Message Modal */}
       {selectedMsg && (
-        <div style={styles.modalOverlay} onClick={() => setSelectedMsg(null)}>
-          <div style={styles.modal} onClick={(e) => e.stopPropagation()}>
-            <h3>📨 Message</h3>
-            <p><strong>From:</strong> {selectedMsg.fromName}</p>
+        <div style={{ position: "fixed", top: 0, left: 0, right: 0, bottom: 0, background: "rgba(0,0,0,0.5)", display: "flex", justifyContent: "center", alignItems: "center" }} onClick={() => setSelectedMsg(null)}>
+          <div style={{ background: "#fff", padding: 20, borderRadius: 10, width: "90%", maxWidth: 400, color: "#000" }} onClick={(e) => e.stopPropagation()}>
+            <h3>From: {selectedMsg.fromName}</h3>
             <p>{selectedMsg.message}</p>
-            <input
-              style={styles.input}
-              value={reply}
-              onChange={(e) => setReply(e.target.value)}
-              placeholder="Reply..."
-            />
-            <button style={styles.button} onClick={sendReply}>Send</button>
-            <button
-              style={{ ...styles.button, background: "#f44336" }}
-              onClick={deleteMessage}
-            >
-              Delete
-            </button>
-            <button onClick={() => setSelectedMsg(null)}>Close</button>
+            <p><small>{timeAgo(selectedMsg.timestamp)}</small></p>
+            <input value={reply} onChange={(e) => setReply(e.target.value)} placeholder="Reply..." style={{ width: "100%", padding: 8, marginBottom: 10 }} />
+            <button onClick={sendReply} style={{ marginRight: 10 }}>Send</button>
+            <button onClick={deleteMessage} style={{ color: "red" }}>Delete</button>
           </div>
         </div>
       )}
 
-      <div style={styles.card}>
-        <div style={styles.avatar} onClick={() => document.getElementById("fileInput").click()}>
-          {profileData.image ? (
-            <img src={profileData.image} alt="profile" style={{ width: "100%", height: "100%", borderRadius: "50%" }} />
-          ) : (
-            <p style={{ fontSize: 30, marginTop: 28 }}>👤</p>
-          )}
+      {/* Profile Card */}
+      <div style={{ background: "#fff", borderRadius: 20, padding: 30, maxWidth: 400, margin: "40px auto", textAlign: "center" }}>
+        <div style={{ width: 100, height: 100, borderRadius: "50%", background: "#ccc", margin: "0 auto 20px", overflow: "hidden", cursor: "pointer" }} onClick={() => document.getElementById("fileInput").click()}>
+          {profileData.image ? <img src={profileData.image} alt="profile" style={{ width: "100%", height: "100%" }} /> : <span style={{ fontSize: 32 }}>👤</span>}
         </div>
-        <input
-          id="fileInput"
-          type="file"
-          accept="image/*"
-          onChange={handleImageUpload}
-          style={{ display: "none" }}
-        />
-        <h2 style={styles.name}>{profileData.name}</h2>
-        <p style={styles.tagline}>{profileData.email}</p>
+        <input type="file" id="fileInput" style={{ display: "none" }} onChange={handleImageUpload} />
+        <h2>{profileData.name}</h2>
+        <p>{profileData.email}</p>
         {uploading && <p>Uploading...</p>}
-        <button style={styles.button} onClick={handleNameChange}>✏️ Edit Name</button>
-        <h3>📸 Your Posts</h3>
-        <div style={styles.gallery}>
-          {postedImages.length ? postedImages.map((img, i) => (
-            <img key={i} src={img} alt="post" style={styles.postImg} />
-          )) : <p>No posts yet</p>}
+        <button onClick={handleNameChange}>✏️ Edit Name</button>
+
+        <h3 style={{ marginTop: 30 }}>📸 Your Posts</h3>
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 10, justifyContent: "center", marginTop: 10 }}>
+          {postedImages.map((img, i) => (
+            <img key={i} src={img} alt="post" style={{ width: 100, height: 100, objectFit: "cover", borderRadius: 10 }} />
+          ))}
         </div>
       </div>
     </div>
   );
 }
-
-// Styles
-const styles = {
-  container: {
-    position: "relative",
-    padding: 20,
-    backgroundImage: "url('/assets/IMG-20250620-WA0007.jpg')",
-    backgroundSize: "cover",
-    backgroundPosition: "center",
-    minHeight: "100vh",
-    display: "flex",
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  hamburger: {
-    position: "absolute",
-    top: 20,
-    left: 20,
-    fontSize: 26,
-    cursor: "pointer",
-    zIndex: 10,
-  },
-  badge: {
-    background: "red",
-    color: "#fff",
-    borderRadius: "50%",
-    padding: "2px 6px",
-    fontSize: "12px",
-    marginLeft: "4px",
-  },
-  menu: {
-    position: "absolute",
-    top: 0,
-    left: 0,
-    width: "80%",
-    height: "100vh",
-    background: "#fff",
-    boxShadow: "4px 0 12px rgba(0,0,0,0.1)",
-    padding: 20,
-    zIndex: 9,
-    overflowY: "auto",
-  },
-  menuItem: {
-    fontSize: "15px",
-    margin: "8px 0",
-    cursor: "pointer",
-    borderBottom: "1px solid #eee",
-    padding: 5,
-  },
-  menuTitle: {
-    fontWeight: "bold",
-    fontSize: 16,
-    marginBottom: 5,
-  },
-  modalOverlay: {
-    position: "fixed",
-    top: 0, left: 0, right: 0, bottom: 0,
-    background: "rgba(0,0,0,0.4)",
-    display: "flex",
-    justifyContent: "center",
-    alignItems: "center",
-    zIndex: 100,
-  },
-  modal: {
-    background: "#fff",
-    padding: 20,
-    borderRadius: 10,
-    width: "90%",
-    maxWidth: 400,
-    textAlign: "center",
-  },
-  card: {
-    background: "rgba(255,255,255,0.8)",
-    borderRadius: 20,
-    padding: 30,
-    boxShadow: "0 4px 12px rgba(0,0,0,0.1)",
-    textAlign: "center",
-    maxWidth: 350,
-    width: "100%",
-  },
-  avatar: {
-    width: 100,
-    height: 100,
-    borderRadius: "50%",
-    background: "#ddd",
-    margin: "0 auto 20px",
-    overflow: "hidden",
-    cursor: "pointer",
-  },
-  name: {
-    fontSize: 24,
-    fontWeight: "700",
-    margin: "10px 0 5px",
-  },
-  tagline: {
-    fontSize: 14,
-    color: "#777",
-    marginBottom: 15,
-  },
-  button: {
-    background: "#00cc88",
-    color: "#fff",
-    padding: "10px 20px",
-    border: "none",
-    borderRadius: 10,
-    fontWeight: "600",
-    cursor: "pointer",
-    marginTop: 10,
-  },
-  gallery: {
-    display: "flex",
-    flexWrap: "wrap",
-    gap: 10,
-    justifyContent: "center",
-    marginTop: 10,
-  },
-  postImg: {
-    width: 100,
-    height: 100,
-    objectFit: "cover",
-    borderRadius: 10,
-  },
-  input: {
-    width: "90%",
-    padding: 10,
-    borderRadius: 8,
-    border: "1px solid #ccc",
-    marginBottom: 10,
-  },
-};
