@@ -1,11 +1,10 @@
-import React, { useEffect, useState, useRef } from "react";
+import React, { useEffect, useState } from "react";
 import { getAuth, signOut, onAuthStateChanged } from "firebase/auth";
 import {
   ref,
   get,
   child,
   update,
-  remove,
   push,
   onValue,
 } from "firebase/database";
@@ -25,6 +24,7 @@ export default function Profile() {
   const [unreadCount, setUnreadCount] = useState(0);
   const [reply, setReply] = useState("");
   const [selectedMsg, setSelectedMsg] = useState(null);
+  const [loading, setLoading] = useState(true); // NEW ✅
 
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, async (u) => {
@@ -61,9 +61,9 @@ export default function Profile() {
           });
         }
         setOutbox(sent);
-      } else {
-        setUser(null);
       }
+
+      setLoading(false); // ✅ Done checking auth
     });
 
     return () => unsub();
@@ -116,15 +116,15 @@ export default function Profile() {
     setSelectedMsg(msg);
   };
 
-  if (!user) return null;
+  if (loading) return <p style={{ textAlign: "center", marginTop: 50 }}>Loading...</p>;
+  if (!user) return <p style={{ textAlign: "center", marginTop: 50 }}>Not signed in.</p>;
 
   return (
     <div style={{
       backgroundImage: "url('/assets/IMG-20250620-WA0007.jpg')",
       backgroundSize: "cover",
       minHeight: "100vh",
-      padding: 20,
-      color: "#000"
+      padding: 20
     }}>
       <div onClick={() => setMenuOpen(!menuOpen)} style={{ fontSize: 28, cursor: "pointer" }}>☰</div>
 
@@ -156,22 +156,18 @@ export default function Profile() {
         <button onClick={handleNameChange}>✏️ Edit Name</button>
 
         <h3>📥 Inbox ({unreadCount})</h3>
-        <div>
-          {inbox.map((m) => (
-            <p key={m.id} onClick={() => markAsRead(m)}>
-              <strong>{m.fromName}</strong>: {m.message.slice(0, 20)}...
-            </p>
-          ))}
-        </div>
+        {inbox.map((m) => (
+          <p key={m.id} onClick={() => markAsRead(m)}>
+            <strong>{m.fromName}</strong>: {m.message.slice(0, 20)}...
+          </p>
+        ))}
 
         <h3>📤 Outbox</h3>
-        <div>
-          {outbox.map((m, i) => (
-            <p key={i}>
-              To <strong>{userMap[m.to]}</strong>: {m.message.slice(0, 20)}...
-            </p>
-          ))}
-        </div>
+        {outbox.map((m, i) => (
+          <p key={i}>
+            To <strong>{userMap[m.to]}</strong>: {m.message.slice(0, 20)}...
+          </p>
+        ))}
       </div>
 
       {selectedMsg && (
