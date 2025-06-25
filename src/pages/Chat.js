@@ -577,3 +577,28 @@ const recordingWrapper = {
   fontWeight: "bold",
   color: "#00ffcc",
 };
+
+const inputStyle = {
+  padding: "10px",
+  fontSize: "15px",
+  borderRadius: "6px",
+  border: "1px solid #ccc",
+};
+
+const iconButton = {
+  fontSize: "20px",
+  cursor: "pointer",
+  background: "transparent",
+  border: "none",
+};
+
+const emojiPicker = {
+  position: "absolute",
+  bottom: 80,
+  right: 10,
+  background: "#fff",
+  borderRadius: "10px",
+  padding: "10px",
+  boxShadow: "0 0 10px rgba(0,0,0,0.1)",
+  zIndex: 100,
+};
