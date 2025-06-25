@@ -119,19 +119,27 @@ export default function Marketplace() {
     }
   };
 
-  const handleComment = (productId) => {
+  const handleComment = async (productId) => {
     const user = auth.currentUser;
     const text = commentInputs[productId];
     if (!user || !text) return;
 
-    const comment = {
-      name: user.displayName || "User",
-      text,
-      uid: user.uid,
-      timestamp: Date.now(),
-    };
-    push(ref(db, `products/${productId}/comments`), comment);
-    setCommentInputs({ ...commentInputs, [productId]: "" });
+    try {
+      const userSnap = await get(ref(db, `users/${user.uid}`));
+      const name = userSnap.exists() ? userSnap.val().name : "User";
+
+      const comment = {
+        name,
+        text,
+        uid: user.uid,
+        timestamp: Date.now(),
+      };
+
+      await push(ref(db, `products/${productId}/comments`), comment);
+      setCommentInputs({ ...commentInputs, [productId]: "" });
+    } catch (err) {
+      alert("Comment failed: " + err.message);
+    }
   };
 
   const deleteProduct = (id) => {
