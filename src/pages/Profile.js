@@ -53,22 +53,28 @@ export default function Profile() {
         }
         setUserMap(map);
 
-        const prodSnap = await get(ref(db, `products`));
-        const posts = [];
-        if (prodSnap.exists()) {
-          Object.values(prodSnap.val()).forEach((p) => {
-            if (p.uid === u.uid && p.image) posts.push(p.image);
-          });
-        }
-        setPostedImages(posts);
+        // Real-time listener to user's products
+        const userProductsRef = ref(db, "products");
+        onValue(userProductsRef, (snap) => {
+          const posts = [];
+          if (snap.exists()) {
+            Object.entries(snap.val()).forEach(([id, p]) => {
+              if (p.uid === u.uid && p.image) {
+                posts.push({ ...p, id });
+              }
+            });
+          }
+          setPostedImages(posts);
+        });
 
+        // Inbox listener
         inboxRef.current = ref(db, `inbox/${u.uid}`);
         let firstLoad = true;
         onValue(inboxRef.current, (snap) => {
           if (snap.exists()) {
             const msgs = Object.entries(snap.val())
               .map(([id, m]) => ({ id, ...m }))
-              .filter((m) => m.message && m.fromName); // prevent crashing
+              .filter((m) => m.message && m.fromName);
             const sorted = [
               ...msgs.filter((m) => !m.read).sort((a, b) => b.timestamp - a.timestamp),
               ...msgs.filter((m) => m.read).sort((a, b) => b.timestamp - a.timestamp),
@@ -85,6 +91,7 @@ export default function Profile() {
           }
         });
 
+        // Outbox
         const allInbox = await get(ref(db, `inbox`));
         const sent = [];
         if (allInbox.exists()) {
@@ -262,8 +269,8 @@ export default function Profile() {
           display: "flex", flexWrap: "wrap", gap: "10px",
           justifyContent: "center", marginTop: "10px"
         }}>
-          {postedImages.length ? postedImages.map((img, i) => (
-            <img key={i} src={img} alt="post"
+          {postedImages.length ? postedImages.map((post, i) => (
+            <img key={i} src={post.image} alt="post"
               style={{ width: "100px", height: "100px", objectFit: "cover", borderRadius: "10px" }} />
           )) : <p>No posts yet</p>}
         </div>
