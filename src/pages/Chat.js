@@ -4,385 +4,306 @@ import {
   ref as dbRef,
   push,
   onValue,
-  update,
+  remove,
   get,
-  serverTimestamp,
 } from "firebase/database";
 import {
   ref as storageRef,
   uploadBytesResumable,
   getDownloadURL,
+  deleteObject,
 } from "firebase/storage";
 
-const imgbbKey = "30df4aa05f1af3b3b58ee8a74639e5cf";
-
 export default function Chat() {
-  const [userData, setUserData] = useState(null); // fetched user data (name, image)
+  const [userId, setUserId] = useState(null);
+  const [userName, setUserName] = useState(null);
+  const [userImage, setUserImage] = useState(null);
   const [message, setMessage] = useState("");
   const [messages, setMessages] = useState([]);
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
   const [recording, setRecording] = useState(false);
-  const [mediaRecorder, setMediaRecorder] = useState(null);
-  const [audioChunks, setAudioChunks] = useState([]);
-  const [typingUsers, setTypingUsers] = useState({});
+  const mediaRecorderRef = useRef(null);
+  const audioChunksRef = useRef([]);
   const messagesEndRef = useRef(null);
-  const typingTimeoutRef = useRef(null);
-  const [lastSeen, setLastSeen] = useState(null);
-  const [sending, setSending] = useState(false);
 
-  // Initialize user from Firebase Authentication user & fetch user profile data
+  // Fetch current user info once on mount
   useEffect(() => {
-    // You need your own auth user info here
-    // For demo, we'll assume a "userId" is fixed or fetched somehow
-    // Replace this with your auth logic
-    const userId = "currentUserId"; // TODO: replace with real auth user uid
+    // Assume user is authenticated and their UID is available
+    // Adjust to your auth system if needed
+    // For example, get current user UID from auth.currentUser.uid
+    const uid = window?.firebaseAuthUserUID || null; // Replace with actual user UID retrieval
 
-    get(dbRef(db, `users/${userId}`)).then((snap) => {
+    if (!uid) return;
+
+    setUserId(uid);
+
+    // Fetch user profile info (name, image)
+    get(dbRef(db, `users/${uid}`)).then((snap) => {
       if (snap.exists()) {
-        setUserData({ uid: userId, ...snap.val() });
-        // Also update last seen on mount
-        update(dbRef(db, `users/${userId}`), { lastSeen: Date.now() });
+        const data = snap.val();
+        setUserName(data.name || "User");
+        setUserImage(data.image || null);
       } else {
-        // fallback if no profile
-        setUserData({ uid: userId, name: "Anonymous", image: null });
+        setUserName("User");
       }
     });
   }, []);
 
-  // Listen for messages updates
+  // Listen to messages updates
   useEffect(() => {
-    const messagesRef = dbRef(db, "messages");
-    const unsubscribe = onValue(messagesRef, (snapshot) => {
+    const chatRef = dbRef(db, "messages");
+    const unsubscribe = onValue(chatRef, (snapshot) => {
       const data = snapshot.val();
       if (data) {
-        const msgs = Object.entries(data).map(([id, msg]) => ({ id, ...msg }));
-        // Sort by timestamp ascending (oldest first)
-        msgs.sort((a, b) => (a.timestamp || 0) - (b.timestamp || 0));
+        // Sort messages by timestamp ascending
+        const msgs = Object.entries(data)
+          .map(([id, msg]) => ({ id, ...msg }))
+          .sort((a, b) => a.timestamp - b.timestamp);
         setMessages(msgs);
-        scrollToBottom();
       } else {
         setMessages([]);
       }
     });
+
     return () => unsubscribe();
   }, []);
 
-  // Listen for typing indicators of other users
+  // Scroll to bottom on new messages
   useEffect(() => {
-    const typingRef = dbRef(db, "typing");
-    const unsubscribe = onValue(typingRef, (snapshot) => {
-      const data = snapshot.val() || {};
-      setTypingUsers(data);
-    });
-    return () => unsubscribe();
-  }, []);
-
-  // Update own typing status with debounce
-  const updateTypingStatus = (isTyping) => {
-    if (!userData) return;
-    const typingRef = dbRef(db, `typing/${userData.uid}`);
-    if (isTyping) {
-      update(typingRef, { name: userData.name || "Anonymous" });
-      if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
-      typingTimeoutRef.current = setTimeout(() => {
-        update(typingRef, null);
-      }, 3000); // Clear after 3 seconds of inactivity
-    } else {
-      update(typingRef, null);
-    }
-  };
-
-  // Scroll messages to bottom
-  const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  };
+  }, [messages]);
 
   // Send text message
-  const sendMessage = async () => {
-    if (!message.trim() || !userData || sending) return;
-    setSending(true);
-    const newMsg = {
-      uid: userData.uid,
-      name: userData.name || "Anonymous",
-      image: userData.image || null,
-      text: message.trim(),
+  const sendMessage = () => {
+    if (!userName || !message.trim()) return;
+    push(dbRef(db, "messages"), {
+      uid: userId,
+      name: userName,
+      image: userImage || null,
       type: "text",
+      text: message.trim(),
       timestamp: Date.now(),
       status: "sent",
-    };
-    await push(dbRef(db, "messages"), newMsg);
+    });
     setMessage("");
-    updateTypingStatus(false);
-    setSending(false);
   };
 
-  // Send image message (upload to imgbb first)
-  const handleImageUpload = async (e) => {
-    if (!userData) return alert("User data missing");
+  // Handle image upload
+  const handleImageUpload = (e) => {
     const file = e.target.files[0];
     if (!file) return;
 
-    setSending(true);
-    try {
-      const formData = new FormData();
-      formData.append("image", file);
-      const res = await fetch(
-        `https://api.imgbb.com/1/upload?key=${imgbbKey}`,
-        {
-          method: "POST",
-          body: formData,
-        }
-      );
-      const data = await res.json();
-      const url = data.data.url;
+    const fileRef = storageRef(storage, `chatImages/${Date.now()}_${file.name}`);
+    const uploadTask = uploadBytesResumable(fileRef, file);
 
-      const imgMsg = {
-        uid: userData.uid,
-        name: userData.name || "Anonymous",
-        image: userData.image || null,
-        imageUrl: url,
-        type: "image",
-        timestamp: Date.now(),
-        status: "sent",
-      };
-      await push(dbRef(db, "messages"), imgMsg);
-    } catch (error) {
-      alert("Image upload failed: " + error.message);
-    }
-    setSending(false);
-    e.target.value = null; // reset file input
+    uploadTask.on(
+      "state_changed",
+      null,
+      (error) => console.error("Upload failed", error),
+      () => {
+        getDownloadURL(uploadTask.snapshot.ref).then((downloadURL) => {
+          push(dbRef(db, "messages"), {
+            uid: userId,
+            name: userName,
+            image: userImage || null,
+            type: "image",
+            imageUrl: downloadURL,
+            timestamp: Date.now(),
+            status: "sent",
+          });
+        });
+      }
+    );
   };
 
   // Start voice recording
   const startRecording = async () => {
-    if (recording) return;
     if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-      return alert("Audio recording not supported");
+      alert("Audio recording not supported in this browser.");
+      return;
     }
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      const mr = new MediaRecorder(stream);
-      let chunks = [];
-
-      mr.ondataavailable = (e) => {
-        if (e.data.size > 0) chunks.push(e.data);
+      mediaRecorderRef.current = new MediaRecorder(stream);
+      audioChunksRef.current = [];
+      mediaRecorderRef.current.ondataavailable = (e) => {
+        audioChunksRef.current.push(e.data);
       };
-
-      mr.onstop = async () => {
-        const blob = new Blob(chunks, { type: "audio/webm" });
-        chunks = [];
-        await uploadAudio(blob);
+      mediaRecorderRef.current.onstop = () => {
+        const blob = new Blob(audioChunksRef.current, { type: "audio/webm" });
+        uploadVoiceNote(blob);
       };
-
-      mr.start();
-      setMediaRecorder(mr);
-      setAudioChunks(chunks);
+      mediaRecorderRef.current.start();
       setRecording(true);
     } catch (err) {
-      alert("Error starting recording: " + err.message);
+      alert("Could not start recording: " + err.message);
     }
   };
 
   // Stop voice recording
   const stopRecording = () => {
-    if (mediaRecorder && recording) {
-      mediaRecorder.stop();
+    if (mediaRecorderRef.current && recording) {
+      mediaRecorderRef.current.stop();
       setRecording(false);
     }
   };
 
-  // Upload audio to Firebase Storage and send message
-  const uploadAudio = async (blob) => {
-    if (!userData) return alert("User data missing");
-    setSending(true);
-    try {
-      const fileName = `voice_${Date.now()}.webm`;
-      const audioRef = storageRef(storage, `chatAudio/${fileName}`);
-      const snapshot = await uploadBytesResumable(audioRef, blob);
-      const audioURL = await getDownloadURL(snapshot.ref);
+  // Upload voice note to Firebase Storage & push message
+  const uploadVoiceNote = (blob) => {
+    const fileRef = storageRef(storage, `voiceNotes/${Date.now()}.webm`);
+    const uploadTask = uploadBytesResumable(fileRef, blob);
 
-      const audioMsg = {
-        uid: userData.uid,
-        name: userData.name || "Anonymous",
-        image: userData.image || null,
-        audioUrl: audioURL,
-        type: "audio",
-        timestamp: Date.now(),
-        status: "sent",
-      };
-      await push(dbRef(db, "messages"), audioMsg);
-    } catch (err) {
-      alert("Audio upload failed: " + err.message);
-    }
-    setSending(false);
-  };
-
-  // Delete audio message (remove from storage & db)
-  const deleteAudioMessage = async (msg) => {
-    if (msg.uid !== userData.uid) return alert("Can only delete your own messages");
-    try {
-      // Delete audio file from storage
-      const fileRef = storageRef(storage, msg.audioUrl.split(storageRef(storage)._baseUrl)[1]);
-      // Firebase SDK doesn't provide direct delete from URL, so this may require storage path parsing
-      // Alternative: Store audio path in message object separately for deletion
-      // Here, skipping storage deletion due to complexity, just remove DB message
-      await remove(dbRef(db, `messages/${msg.id}`));
-    } catch (err) {
-      alert("Delete failed: " + err.message);
-    }
-  };
-
-  // Message input onChange handler with typing update
-  const onMessageChange = (e) => {
-    setMessage(e.target.value);
-    updateTypingStatus(true);
-  };
-
-  // Helper: Display typing users except current user
-  const renderTypingUsers = () => {
-    if (!userData) return null;
-    const othersTyping = Object.entries(typingUsers).filter(([uid]) => uid !== userData.uid);
-    if (othersTyping.length === 0) return null;
-
-    return (
-      <div style={{ padding: "5px 10px", fontStyle: "italic", color: "#666" }}>
-        {othersTyping.map(([uid, val]) => val.name).join(", ")} typing...
-      </div>
+    uploadTask.on(
+      "state_changed",
+      null,
+      (error) => console.error("Voice upload failed", error),
+      () => {
+        getDownloadURL(uploadTask.snapshot.ref).then((downloadURL) => {
+          push(dbRef(db, "messages"), {
+            uid: userId,
+            name: userName,
+            image: userImage || null,
+            type: "voice",
+            voiceUrl: downloadURL,
+            timestamp: Date.now(),
+            status: "sent",
+          });
+        });
+      }
     );
   };
 
-  // Helper: Format timestamp
-  const formatTime = (ts) => {
-    if (!ts) return "";
-    const d = new Date(ts);
-    return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  // Delete message and if voice/image delete storage too
+  const deleteMessage = async (msg) => {
+    if (!window.confirm("Delete this message?")) return;
+    try {
+      await remove(dbRef(db, `messages/${msg.id}`));
+      if (msg.type === "image" && msg.imageUrl) {
+        const imgRef = storageRef(storage, msg.imageUrl);
+        // Can't delete by URL directly; need to parse storage path
+        // Assuming storage URL contains '/o/' + encoded path after domain:
+        const path = decodeURIComponent(msg.imageUrl.split("/o/")[1].split("?")[0]);
+        await deleteObject(storageRef(storage, path));
+      }
+      if (msg.type === "voice" && msg.voiceUrl) {
+        const path = decodeURIComponent(msg.voiceUrl.split("/o/")[1].split("?")[0]);
+        await deleteObject(storageRef(storage, path));
+      }
+    } catch (err) {
+      console.error("Error deleting message/storage", err);
+    }
   };
 
-  // Helper: Message delivery status icon
-  const messageStatusIcon = (status) => {
-    return status === "sent" ? "✅" : "✅✅";
-  };
+  // Emoji add helper
+  const addEmoji = (emoji) => setMessage((prev) => prev + emoji);
+
+  // Message status display
+  const messageStatus = (status) => (status === "sent" ? "✅" : "✅✅");
 
   return (
     <div style={chatWrapper}>
       <div style={chatHeader}>
-        <h3>💬 Chatroom</h3>
-        {userData && (
-          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-            {userData.image ? (
-              <img
-                src={userData.image}
-                alt="profile"
-                style={{ width: 32, height: 32, borderRadius: "50%" }}
-              />
-            ) : (
-              <div style={{ width: 32, height: 32, borderRadius: "50%", background: "#ccc" }} />
-            )}
-            <span>{userData.name || "Anonymous"}</span>
-          </div>
-        )}
+        <h2 style={{ fontSize: "16px", margin: 0 }}>💬 Welcome to Chatroom</h2>
       </div>
 
       <div style={messagesContainer}>
         {messages.map((msg) => {
-          const isOwn = userData && msg.uid === userData.uid;
+          const isOwn = msg.uid === userId;
           return (
             <div
               key={msg.id}
               style={{
                 ...msgStyle,
                 alignSelf: isOwn ? "flex-end" : "flex-start",
-                backgroundColor: isOwn ? "#dcf8c6" : "#333",
+                backgroundColor: isOwn ? "#dcf8c6" : "#0055cc",
                 color: isOwn ? "#000" : "#fff",
                 borderTopRightRadius: isOwn ? 0 : "10px",
                 borderTopLeftRadius: isOwn ? "10px" : 0,
-                display: "flex",
-                flexDirection: "column",
                 maxWidth: "75%",
-                position: "relative",
+                marginBottom: "10px",
               }}
             >
               <div
                 style={{
                   display: "flex",
                   alignItems: "center",
-                  gap: "6px",
+                  gap: 8,
                   marginBottom: 4,
+                  color: "#99ccff",
+                  fontWeight: "bold",
                 }}
               >
                 {msg.image ? (
                   <img
                     src={msg.image}
-                    alt="user"
-                    style={{ width: 24, height: 24, borderRadius: "50%" }}
+                    alt="User"
+                    style={{ width: 32, height: 32, borderRadius: "50%" }}
                   />
                 ) : (
                   <div
                     style={{
-                      width: 24,
-                      height: 24,
+                      width: 32,
+                      height: 32,
                       borderRadius: "50%",
-                      background: "#666",
+                      backgroundColor: "#99ccff",
+                      textAlign: "center",
+                      lineHeight: "32px",
+                      fontWeight: "bold",
+                      color: "#003366",
                     }}
-                  />
+                  >
+                    {msg.name?.charAt(0).toUpperCase() || "U"}
+                  </div>
                 )}
-                <strong>{msg.name}</strong>
+                <span>{msg.name}</span>
               </div>
 
+              {/* Message Content */}
               {msg.type === "text" && <div>{msg.text}</div>}
 
               {msg.type === "image" && (
                 <img
                   src={msg.imageUrl}
                   alt="sent pic"
-                  style={{ maxWidth: 200, borderRadius: 8, cursor: "pointer" }}
+                  style={{ maxWidth: "200px", borderRadius: 8, cursor: "pointer" }}
                   onClick={() => window.open(msg.imageUrl, "_blank")}
                 />
               )}
 
-              {msg.type === "audio" && (
-                <audio controls style={{ outline: "none", width: "100%" }}>
-                  <source src={msg.audioUrl} type="audio/webm" />
-                  Your browser does not support the audio element.
-                </audio>
+              {msg.type === "voice" && (
+                <audio controls src={msg.voiceUrl} style={{ maxWidth: "200px", outline: "none" }} />
               )}
 
-              <div
-                style={{
-                  fontSize: 11,
-                  color: "#888",
-                  textAlign: "right",
-                  marginTop: 4,
-                }}
-              >
-                {formatTime(msg.timestamp)} {messageStatusIcon(msg.status)}
-              </div>
-
-              {isOwn && msg.type === "audio" && (
+              {/* Delete button for own messages */}
+              {isOwn && (
                 <button
-                  onClick={() => deleteAudioMessage(msg)}
+                  onClick={() => deleteMessage(msg)}
                   style={{
-                    position: "absolute",
-                    top: 2,
-                    right: 2,
+                    marginTop: 6,
                     background: "transparent",
                     border: "none",
                     color: "red",
                     cursor: "pointer",
                     fontWeight: "bold",
                   }}
-                  title="Delete audio message"
+                  title="Delete message"
                 >
                   ❌
                 </button>
               )}
+
+              <div style={timeStyle}>
+                {new Date(msg.timestamp).toLocaleTimeString([], {
+                  hour: "2-digit",
+                  minute: "2-digit",
+                })}{" "}
+                {messageStatus(msg.status)}
+              </div>
             </div>
           );
         })}
         <div ref={messagesEndRef} />
       </div>
-
-      {renderTypingUsers()}
 
       <div style={inputWrapper}>
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
@@ -390,12 +311,12 @@ export default function Chat() {
             style={{ ...inputStyle, flex: 1 }}
             placeholder="Type your message"
             value={message}
-            onChange={onMessageChange}
-            onKeyDown={(e) => {
-              if (e.key === "Enter" && !sending) sendMessage();
-            }}
+            onChange={(e) => setMessage(e.target.value)}
+            onKeyDown={(e) => e.key === "Enter" && sendMessage()}
+            disabled={recording}
           />
 
+          {/* Upload Image */}
           <label style={iconButton} title="Send Image">
             📎
             <input
@@ -403,67 +324,67 @@ export default function Chat() {
               accept="image/*"
               style={{ display: "none" }}
               onChange={handleImageUpload}
-              disabled={sending}
+              disabled={recording}
             />
           </label>
 
+          {/* Emoji picker toggle */}
+          <button
+            onClick={() => setShowEmojiPicker(!showEmojiPicker)}
+            style={iconButton}
+            title="Add Emoji"
+            disabled={recording}
+          >
+            😊
+          </button>
+
+          {/* Voice Recording toggle */}
           {!recording ? (
             <button
               onClick={startRecording}
-              style={iconButton}
+              style={{ ...iconButton, color: "#f33" }}
               title="Start Voice Recording"
-              disabled={sending}
             >
               🎤
             </button>
           ) : (
             <button
               onClick={stopRecording}
-              style={{ ...iconButton, color: "red" }}
-              title="Stop Voice Recording"
-              disabled={sending}
+              style={{ ...iconButton, color: "#a00" }}
+              title="Stop Recording"
             >
-              ⏹
+              ■
             </button>
           )}
-
-          <button
-            onClick={() => setShowEmojiPicker(!showEmojiPicker)}
-            style={iconButton}
-            title="Add Emoji"
-            disabled={sending}
-          >
-            😊
-          </button>
         </div>
 
-        <button
-          onClick={sendMessage}
-          style={{ ...btnStyle, marginTop: 8 }}
-          disabled={sending}
-        >
-          {sending ? "Sending..." : "Send"}
-        </button>
-
+        {/* Emoji picker */}
         {showEmojiPicker && (
           <div style={emojiPicker}>
             {["😀", "😂", "😍", "😎", "👍", "🙏", "🔥", "❤️"].map((emoji) => (
               <span
                 key={emoji}
                 style={{ fontSize: 24, cursor: "pointer", margin: 5 }}
-                onClick={() => setMessage((prev) => prev + emoji)}
+                onClick={() => addEmoji(emoji)}
               >
                 {emoji}
               </span>
             ))}
           </div>
         )}
+
+        {/* Send button */}
+        <button
+          onClick={sendMessage}
+          style={{ ...btnStyle, marginTop: 8 }}
+          disabled={recording || message.trim() === ""}
+        >
+          Send
+        </button>
       </div>
     </div>
   );
 }
-
-// Styles
 
 const chatWrapper = {
   display: "flex",
@@ -475,11 +396,11 @@ const chatWrapper = {
 };
 
 const chatHeader = {
-  padding: "15px",
+  padding: "10px",
   backgroundColor: "#00ffcc",
   color: "#000",
   fontWeight: "bold",
-  fontSize: "18px",
+  fontSize: "16px",
   textAlign: "center",
 };
 
@@ -489,12 +410,12 @@ const messagesContainer = {
   overflowY: "auto",
   display: "flex",
   flexDirection: "column",
+  gap: "12px",
 };
 
 const msgStyle = {
   padding: "10px 14px",
   borderRadius: "12px",
-  boxShadow: "0 0 5px rgba(0,0,0,0.2)",
   fontSize: "15px",
   lineHeight: "1.4",
 };
@@ -513,6 +434,13 @@ const inputWrapper = {
   borderTop: "1px solid #333",
 };
 
+const inputStyle = {
+  padding: "12px",
+  borderRadius: "6px",
+  border: "none",
+  fontSize: "16px",
+};
+
 const btnStyle = {
   padding: "12px",
   backgroundColor: "#00ffcc",
@@ -523,21 +451,7 @@ const btnStyle = {
   cursor: "pointer",
 };
 
-const btnStyleRed = {
-  ...btnStyle,
-  backgroundColor: "#ff4444",
-};
-
-const btnStyleMic = {
-  ...btnStyle,
-  padding: "10px",
-  fontSize: "20px",
-  borderRadius: "50%",
-  minWidth: "44px",
-  textAlign: "center",
-};
-
-const btnStyleImgLabel = {
+const iconButton = {
   cursor: "pointer",
   fontSize: "24px",
   background: "transparent",
@@ -546,34 +460,12 @@ const btnStyleImgLabel = {
   userSelect: "none",
 };
 
-const previewWrapper = {
-  position: "relative",
-  marginBottom: 8,
-  display: "inline-block",
-};
-
-const removePreviewBtn = {
-  position: "absolute",
-  top: -6,
-  right: -6,
-  background: "red",
-  color: "#fff",
-  border: "none",
-  borderRadius: "50%",
-  cursor: "pointer",
-  width: 20,
-  height: 20,
-  lineHeight: "20px",
-  textAlign: "center",
-  fontWeight: "bold",
-};
-
-const recordingWrapper = {
+const emojiPicker = {
+  marginTop: "10px",
+  padding: "10px",
+  backgroundColor: "#222",
+  borderRadius: "8px",
   display: "flex",
-  justifyContent: "space-between",
-  alignItems: "center",
-  gap: 10,
-  padding: "10px 0",
-  fontWeight: "bold",
-  color: "#00ffcc",
+  flexWrap: "wrap",
+  justifyContent: "center",
 };
