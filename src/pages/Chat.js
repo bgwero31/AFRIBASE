@@ -173,7 +173,6 @@ export default function Chat() {
       setRecording(false);
     }
   };
-
   const deleteAudioMessage = async (msg) => {
     if (msg.uid !== userData.uid) return;
     await remove(dbRef(db, `messages/${msg.id}`));
@@ -185,15 +184,16 @@ export default function Chat() {
   };
 
   const formatTime = (ts) => {
-    if (!ts) return \"\";
+    if (!ts) return "";
     const d = new Date(ts);
-    return d.toLocaleTimeString([], { hour: \"2-digit\", minute: \"2-digit\" });
+    return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
   };
 
   const messageStatusIcon = (status) => {
-    return status === \"sent\" ? \"✅\" : \"✅✅\";
+    return status === "sent" ? "✅" : "✅✅";
   };
-return (
+
+  return (
     <div style={chatWrapper}>
       <div style={chatHeader}>
         <h3>💬 Chatroom</h3>
@@ -206,7 +206,14 @@ return (
                 style={{ width: 32, height: 32, borderRadius: "50%" }}
               />
             ) : (
-              <div style={{ width: 32, height: 32, borderRadius: "50%", background: "#ccc" }} />
+              <div
+                style={{
+                  width: 32,
+                  height: 32,
+                  borderRadius: "50%",
+                  background: "#ccc",
+                }}
+              />
             )}
             <span>{userData.name}</span>
           </div>
@@ -228,7 +235,9 @@ return (
                 borderTopLeftRadius: isOwn ? "10px" : 0,
               }}
             >
-              <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 4 }}>
+              <div
+                style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 4 }}
+              >
                 {msg.image ? (
                   <img
                     src={msg.image}
@@ -236,7 +245,9 @@ return (
                     style={{ width: 24, height: 24, borderRadius: "50%" }}
                   />
                 ) : (
-                  <div style={{ width: 24, height: 24, borderRadius: "50%", background: "#666" }} />
+                  <div
+                    style={{ width: 24, height: 24, borderRadius: "50%", background: "#666" }}
+                  />
                 )}
                 <strong>{msg.name}</strong>
               </div>
