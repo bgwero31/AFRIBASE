@@ -199,13 +199,13 @@ export default function Profile() {
       {/* Sidebar */}
       {menuOpen && (
         <div style={{ background: "#fff", color: "#111", padding: 15, borderRadius: 10, marginTop: 10 }}>
-          <h3>📥 Inbox</h3>
+          <h3>✉️ Inbox</h3>
           {inbox.length > 0 ? inbox.map((m) => (
             <div key={m.id} onClick={() => markAsRead(m)} style={{ marginBottom: 10, cursor: "pointer", fontWeight: m.read ? "normal" : "bold" }}>
               {m.fromName}: {m.message.slice(0, 30)}... <small>({timeAgo(m.timestamp)})</small>
             </div>
           )) : <p>No messages yet</p>}
-          <h3>📤 Outbox</h3>
+          <h3✉️ Outbox</h3>
           {outbox.length > 0 ? outbox.map((m, i) => (
             <div key={i}>
               To {userMap[m.to]}: {m.message.slice(0, 30)}... <small>({timeAgo(m.timestamp)})</small>
