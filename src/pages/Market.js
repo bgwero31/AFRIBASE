@@ -74,7 +74,7 @@ export default function Marketplace() {
         comments: [],
         ownerUID: user.uid,
         ownerName: user.displayName || "Unknown",
-        ownerPhoneNumber: user.phoneNumber || "", // assuming phone number is available
+        ownerPhoneNumber: user.phoneNumber || "",
       });
 
       setTitle("");
@@ -123,7 +123,6 @@ export default function Marketplace() {
     setShowComments({ ...showComments, [id]: !showComments[id] });
   };
 
-  // Like/dislike toggle logic
   const toggleLike = async (product) => {
     const user = auth.currentUser;
     if (!user) return alert("Please login to like products.");
@@ -133,10 +132,8 @@ export default function Marketplace() {
     let updatedDislikes = product.dislikes || [];
 
     if (updatedLikes.includes(userId)) {
-      // Remove like
       updatedLikes = updatedLikes.filter((id) => id !== userId);
     } else {
-      // Add like and remove dislike if exists
       updatedLikes.push(userId);
       updatedDislikes = updatedDislikes.filter((id) => id !== userId);
     }
@@ -156,10 +153,8 @@ export default function Marketplace() {
     let updatedDislikes = product.dislikes || [];
 
     if (updatedDislikes.includes(userId)) {
-      // Remove dislike
       updatedDislikes = updatedDislikes.filter((id) => id !== userId);
     } else {
-      // Add dislike and remove like if exists
       updatedDislikes.push(userId);
       updatedLikes = updatedLikes.filter((id) => id !== userId);
     }
@@ -170,10 +165,9 @@ export default function Marketplace() {
     });
   };
 
-  // WhatsApp link helper
   const getWhatsAppLink = (phoneNumber, productTitle) => {
     if (!phoneNumber) return "#";
-    const phone = phoneNumber.replace(/\D/g, ""); // remove non-digits
+    const phone = phoneNumber.replace(/\D/g, "");
     const text = encodeURIComponent(`Hello, I am interested in your product: ${productTitle}`);
     return `https://wa.me/${phone}?text=${text}`;
   };
@@ -191,183 +185,202 @@ export default function Marketplace() {
         ...pageStyle,
         backgroundImage: 'url("/assets/IMG-20250620-WA0005.jpg")',
         backgroundSize: "cover",
+        backgroundRepeat: "no-repeat",
+        backgroundPosition: "center",
+        position: "relative",
+        color: "#000",
       }}
     >
-      <input
-        style={searchInput}
-        placeholder="🔍 Search products..."
-        value={search}
-        onChange={(e) => setSearch(e.target.value)}
+      {/* White transparent overlay */}
+      <div
+        style={{
+          position: "absolute",
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          backgroundColor: "rgba(255, 255, 255, 0.85)",
+          zIndex: 0,
+        }}
       />
 
-      <div>
+      {/* Content container */}
+      <div style={{ position: "relative", zIndex: 1 }}>
         <input
-          placeholder="Title"
-          value={title}
-          onChange={(e) => setTitle(e.target.value)}
+          style={searchInput}
+          placeholder="🔍 Search products..."
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
         />
-        <input
-          placeholder="Description"
-          value={description}
-          onChange={(e) => setDescription(e.target.value)}
-        />
-        <input
-          placeholder="Price"
-          value={price}
-          onChange={(e) => setPrice(e.target.value)}
-        />
-        <select value={category} onChange={(e) => setCategory(e.target.value)}>
-          <option value="">Category</option>
-          <option value="Electronics">📱 Electronics</option>
-          <option value="Clothing">👗 Clothing</option>
-          <option value="Food">🍲 Food</option>
-          <option value="Vehicles">🚗 Vehicles</option>
-          <option value="Other">🔧 Other</option>
-        </select>
-        <input type="file" onChange={(e) => setImage(e.target.files[0])} />
-        <button onClick={handlePost} disabled={uploading}>
-          {uploading ? "Uploading..." : "📤 Post"}
-        </button>
-      </div>
 
-      <div style={productGrid}>
-        {filtered.map((p) => (
-          <div key={p.id} style={cardStyle}>
-            {auth.currentUser?.uid === p.ownerUID && (
-              <button onClick={() => deleteFromView(p.id)} style={closeBtnStyle}>
-                ❌
-              </button>
-            )}
+        <div>
+          <input
+            placeholder="Title"
+            value={title}
+            onChange={(e) => setTitle(e.target.value)}
+          />
+          <input
+            placeholder="Description"
+            value={description}
+            onChange={(e) => setDescription(e.target.value)}
+          />
+          <input
+            placeholder="Price"
+            value={price}
+            onChange={(e) => setPrice(e.target.value)}
+          />
+          <select value={category} onChange={(e) => setCategory(e.target.value)}>
+            <option value="">Category</option>
+            <option value="Electronics">📱 Electronics</option>
+            <option value="Clothing">👗 Clothing</option>
+            <option value="Food">🍲 Food</option>
+            <option value="Vehicles">🚗 Vehicles</option>
+            <option value="Other">🔧 Other</option>
+          </select>
+          <input type="file" onChange={(e) => setImage(e.target.files[0])} />
+          <button onClick={handlePost} disabled={uploading}>
+            {uploading ? "Uploading..." : "📤 Post"}
+          </button>
+        </div>
 
-            <img
-              src={p.image}
-              style={imgStyle}
-              alt={p.title}
-              onClick={() => setModal(p)}
-            />
-            <h3>{p.title}</h3>
-            <p>{p.description}</p>
-            <strong style={{ color: "#00cc99" }}>{p.price}</strong>
-            <div>📂 {p.category}</div>
-            <div style={{ fontSize: "12px", color: "#333" }}>{p.time}</div>
+        <div style={productGrid}>
+          {filtered.map((p) => (
+            <div key={p.id} style={cardStyle}>
+              {auth.currentUser?.uid === p.ownerUID && (
+                <button onClick={() => deleteFromView(p.id)} style={closeBtnStyle}>
+                  ❌
+                </button>
+              )}
 
-            <div>
-              <button onClick={() => toggleShowComments(p.id)}>
-                💬 Comments ({p.comments.length})
-              </button>
-              {showComments[p.id] && (
-                <div
+              <img
+                src={p.image}
+                style={imgStyle}
+                alt={p.title}
+                onClick={() => setModal(p)}
+              />
+              <h3>{p.title}</h3>
+              <p>{p.description}</p>
+              <strong style={{ color: "#00cc99" }}>{p.price}</strong>
+              <div>📂 {p.category}</div>
+              <div style={{ fontSize: "12px", color: "#333" }}>{p.time}</div>
+
+              <div>
+                <button onClick={() => toggleShowComments(p.id)}>
+                  💬 Comments ({p.comments.length})
+                </button>
+                {showComments[p.id] && (
+                  <div
+                    style={{
+                      maxHeight: "100px",
+                      overflowY: "auto",
+                      marginTop: "5px",
+                    }}
+                  >
+                    {p.comments.map((c) => (
+                      <p key={c.id}>
+                        <strong>{c.name}</strong>: {c.text}
+                        {auth.currentUser?.uid === c.uid && (
+                          <span
+                            style={{
+                              color: "red",
+                              marginLeft: 5,
+                              cursor: "pointer",
+                            }}
+                            onClick={() => deleteCommentFromView(p.id, c.id)}
+                          >
+                            ❌
+                          </span>
+                        )}
+                      </p>
+                    ))}
+                  </div>
+                )}
+                <input
+                  style={commentStyle}
+                  placeholder="Add a comment..."
+                  value={commentInputs[p.id] || ""}
+                  onChange={(e) =>
+                    setCommentInputs({
+                      ...commentInputs,
+                      [p.id]: e.target.value,
+                    })
+                  }
+                />
+                <button style={buttonStyle} onClick={() => handleComment(p.id)}>
+                  Post
+                </button>
+              </div>
+
+              <div style={{ marginTop: 8 }}>
+                <button
+                  onClick={() => toggleLike(p)}
                   style={{
-                    maxHeight: "100px",
-                    overflowY: "auto",
-                    marginTop: "5px",
+                    ...likeBtnStyle,
+                    backgroundColor: p.likes.includes(auth.currentUser?.uid)
+                      ? "#0a0"
+                      : "#ccc",
                   }}
                 >
-                  {p.comments.map((c) => (
-                    <p key={c.id}>
-                      <strong>{c.name}</strong>: {c.text}
-                      {auth.currentUser?.uid === c.uid && (
-                        <span
-                          style={{
-                            color: "red",
-                            marginLeft: 5,
-                            cursor: "pointer",
-                          }}
-                          onClick={() => deleteCommentFromView(p.id, c.id)}
-                        >
-                          ❌
-                        </span>
-                      )}
-                    </p>
-                  ))}
-                </div>
-              )}
-              <input
-                style={commentStyle}
-                placeholder="Add a comment..."
-                value={commentInputs[p.id] || ""}
-                onChange={(e) =>
-                  setCommentInputs({
-                    ...commentInputs,
-                    [p.id]: e.target.value,
-                  })
-                }
-              />
-              <button style={buttonStyle} onClick={() => handleComment(p.id)}>
-                Post
-              </button>
-            </div>
+                  👍 {p.likes.length}
+                </button>
 
-            <div style={{ marginTop: 8 }}>
-              <button
-                onClick={() => toggleLike(p)}
-                style={{
-                  ...likeBtnStyle,
-                  backgroundColor: p.likes.includes(auth.currentUser?.uid)
-                    ? "#0a0"
-                    : "#ccc",
-                }}
-              >
-                👍 {p.likes.length}
-              </button>
+                <button
+                  onClick={() => toggleDislike(p)}
+                  style={{
+                    ...dislikeBtnStyle,
+                    backgroundColor: p.dislikes.includes(auth.currentUser?.uid)
+                      ? "#a00"
+                      : "#ccc",
+                  }}
+                >
+                  👎 {p.dislikes.length}
+                </button>
+
+                <a
+                  href={getWhatsAppLink(p.ownerPhoneNumber, p.title)}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  style={whatsappBtnStyle}
+                >
+                  WhatsApp Seller
+                </a>
+              </div>
 
               <button
-                onClick={() => toggleDislike(p)}
-                style={{
-                  ...dislikeBtnStyle,
-                  backgroundColor: p.dislikes.includes(auth.currentUser?.uid)
-                    ? "#a00"
-                    : "#ccc",
+                onClick={() => {
+                  setSelectedUser({ uid: p.ownerUID, name: p.ownerName });
+                  setShowModal(true);
                 }}
+                style={buttonStyle}
               >
-                👎 {p.dislikes.length}
+                Chat Seller
               </button>
-
-              {/* WhatsApp contact button */}
-              <a
-                href={getWhatsAppLink(p.ownerPhoneNumber, p.title)}
-                target="_blank"
-                rel="noopener noreferrer"
-                style={whatsappBtnStyle}
-              >
-                WhatsApp Seller
-              </a>
             </div>
-
-            <button
-              onClick={() => {
-                setSelectedUser({ uid: p.ownerUID, name: p.ownerName });
-                setShowModal(true);
-              }}
-              style={buttonStyle}
-            >
-              Chat Seller
-            </button>
-          </div>
-        ))}
-      </div>
-
-      {modal && (
-        <div style={modalOverlay} onClick={() => setModal(null)}>
-          <div style={modalContent} onClick={(e) => e.stopPropagation()}>
-            <img src={modal.image} style={modalImage} alt={modal.title} />
-            <h2>{modal.title}</h2>
-            <p>{modal.description}</p>
-            <p>📂 {modal.category}</p>
-            <p style={{ color: "#00cc99", fontWeight: "bold" }}>{modal.price}</p>
-            <p style={{ fontSize: "12px", color: "#aaa" }}>{modal.time}</p>
-          </div>
+          ))}
         </div>
-      )}
 
-      {showModal && selectedUser && (
-        <SendPrivateMessage
-          recipientUID={selectedUser.uid}
-          recipientName={selectedUser.name}
-          onClose={() => setShowModal(false)}
-          productId={null}
-        />
-      )}
+        {modal && (
+          <div style={modalOverlay} onClick={() => setModal(null)}>
+            <div style={modalContent} onClick={(e) => e.stopPropagation()}>
+              <img src={modal.image} style={modalImage} alt={modal.title} />
+              <h2>{modal.title}</h2>
+              <p>{modal.description}</p>
+              <p>📂 {modal.category}</p>
+              <p style={{ color: "#00cc99", fontWeight: "bold" }}>{modal.price}</p>
+              <p style={{ fontSize: "12px", color: "#aaa" }}>{modal.time}</p>
+            </div>
+          </div>
+        )}
+
+        {showModal && selectedUser && (
+          <SendPrivateMessage
+            recipientUID={selectedUser.uid}
+            recipientName={selectedUser.name}
+            onClose={() => setShowModal(false)}
+            productId={null}
+          />
+        )}
+      </div>
     </div>
   );
 }
