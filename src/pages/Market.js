@@ -32,16 +32,13 @@ export default function Marketplace() {
   const [uploading, setUploading] = useState(false);
   const [userWhatsApp, setUserWhatsApp] = useState("");
 
-  // Ask for WhatsApp on first load
   useEffect(() => {
     const user = auth.currentUser;
     if (user) {
       const phoneRef = ref(db, `users/${user.uid}/whatsapp`);
       get(phoneRef).then((snap) => {
         if (!snap.exists()) {
-          const phone = prompt(
-            "Enter your WhatsApp number (with country code, e.g. 2637...)"
-          );
+          const phone = prompt("Enter your WhatsApp number (e.g. 26377...)");
           if (phone) {
             set(phoneRef, phone);
             setUserWhatsApp(phone);
@@ -53,7 +50,6 @@ export default function Marketplace() {
     }
   }, []);
 
-  // Load products
   useEffect(() => {
     const productRef = ref(db, "products");
     onValue(productRef, (snapshot) => {
@@ -78,13 +74,11 @@ export default function Marketplace() {
 
   const handlePost = async () => {
     const user = auth.currentUser;
-    if (!user || !userWhatsApp)
-      return alert("Login and provide WhatsApp number.");
-
+    if (!user || !userWhatsApp) return alert("Login and set WhatsApp number.");
     if (!title || !description || !price || !category || !image)
       return alert("Fill all fields.");
-    setUploading(true);
 
+    setUploading(true);
     try {
       const formData = new FormData();
       formData.append("image", image);
@@ -141,8 +135,7 @@ export default function Marketplace() {
   };
 
   const deleteProduct = (id) => {
-    const confirm = window.confirm("Delete this product?");
-    if (confirm) {
+    if (window.confirm("Delete this product?")) {
       remove(ref(db, `products/${id}`));
     }
   };
@@ -172,8 +165,9 @@ export default function Marketplace() {
   };
 
   const getWhatsAppLink = (number, title) => {
-    const text = encodeURIComponent(`Hi, I'm interested in ${title}`);
-    return `https://wa.me/${number}?text=${text}`;
+    if (!number) return "#";
+    const message = encodeURIComponent(`Hi, I'm interested in "${title}"`);
+    return `https://wa.me/${number}?text=${message}`;
   };
 
   const filtered = products.filter(
@@ -183,31 +177,19 @@ export default function Marketplace() {
   );
 
   return (
-    <div style={{ padding: 20 }}>
+    <div style={styles.page}>
       <input
-        style={{ width: "100%", padding: 10 }}
+        style={styles.search}
         placeholder="🔍 Search products..."
         value={search}
         onChange={(e) => setSearch(e.target.value)}
       />
 
-      {/* Form */}
+      {/* Upload Form */}
       <div>
-        <input
-          placeholder="Title"
-          value={title}
-          onChange={(e) => setTitle(e.target.value)}
-        />
-        <input
-          placeholder="Description"
-          value={description}
-          onChange={(e) => setDescription(e.target.value)}
-        />
-        <input
-          placeholder="Price"
-          value={price}
-          onChange={(e) => setPrice(e.target.value)}
-        />
+        <input placeholder="Title" value={title} onChange={(e) => setTitle(e.target.value)} />
+        <input placeholder="Description" value={description} onChange={(e) => setDescription(e.target.value)} />
+        <input placeholder="Price" value={price} onChange={(e) => setPrice(e.target.value)} />
         <select value={category} onChange={(e) => setCategory(e.target.value)}>
           <option value="">Select Category</option>
           <option value="Electronics">📱 Electronics</option>
@@ -216,60 +198,44 @@ export default function Marketplace() {
           <option value="Vehicles">🚗 Vehicles</option>
         </select>
         <input type="file" onChange={(e) => setImage(e.target.files[0])} />
-        <button onClick={handlePost}>
-          {uploading ? "Uploading..." : "Post"}
-        </button>
+        <button onClick={handlePost}>{uploading ? "Uploading..." : "📤 Post"}</button>
       </div>
 
-      {/* Products */}
-      <div>
+      {/* Product Grid */}
+      <div style={styles.grid}>
         {filtered.map((p) => (
-          <div
-            key={p.id}
-            style={{
-              border: "1px solid #ccc",
-              borderRadius: 10,
-              padding: 10,
-              marginTop: 20,
-            }}
-          >
+          <div key={p.id} style={styles.card}>
             {auth.currentUser?.uid === p.ownerUID && (
-              <button onClick={() => deleteProduct(p.id)}>❌</button>
+              <button onClick={() => deleteProduct(p.id)} style={styles.close}>❌</button>
             )}
+
             <img
               src={p.image}
+              style={styles.image}
               alt={p.title}
-              style={{ width: "100%", height: 200, objectFit: "cover" }}
               onClick={() => setModal(p)}
             />
+
             <h3>{p.title}</h3>
             <p>{p.description}</p>
             <strong style={{ color: "green" }}>{p.price}</strong>
             <div>📂 {p.category}</div>
             <p style={{ fontSize: 12 }}>{p.time}</p>
 
-            {/* Likes */}
             <div>
               <button onClick={() => toggleLike(p)}>👍 {p.likes.length}</button>
-              <button onClick={() => toggleDislike(p)}>
-                👎 {p.dislikes.length}
-              </button>
+              <button onClick={() => toggleDislike(p)}>👎 {p.dislikes.length}</button>
             </div>
 
-            {/* Comments */}
             <div>
-              <button
-                onClick={() =>
-                  setShowComments({ ...showComments, [p.id]: !showComments[p.id] })
-                }
-              >
+              <button onClick={() => setShowComments({ ...showComments, [p.id]: !showComments[p.id] })}>
                 💬 Comments ({p.comments.length})
               </button>
               {showComments[p.id] && (
                 <div>
                   {p.comments.map((c) => (
                     <p key={c.id}>
-                      <strong>{c.name}</strong>: {c.text}{" "}
+                      <strong>{c.name}</strong>: {c.text}
                       {auth.currentUser?.uid === c.uid && (
                         <span
                           onClick={() => deleteComment(p.id, c.id)}
@@ -284,10 +250,7 @@ export default function Marketplace() {
                     placeholder="Write comment..."
                     value={commentInputs[p.id] || ""}
                     onChange={(e) =>
-                      setCommentInputs({
-                        ...commentInputs,
-                        [p.id]: e.target.value,
-                      })
+                      setCommentInputs({ ...commentInputs, [p.id]: e.target.value })
                     }
                   />
                   <button onClick={() => handleComment(p.id)}>Post</button>
@@ -295,13 +258,12 @@ export default function Marketplace() {
               )}
             </div>
 
-            {/* Buttons */}
             <div style={{ display: "flex", gap: 10, marginTop: 10 }}>
               <a
                 href={getWhatsAppLink(p.ownerPhoneNumber, p.title)}
                 target="_blank"
                 rel="noreferrer"
-                style={{ background: "#25D366", padding: 6, borderRadius: 6, color: "white" }}
+                style={{ background: "#25D366", padding: 6, borderRadius: 6, color: "#fff" }}
               >
                 WhatsApp Seller
               </a>
@@ -321,35 +283,16 @@ export default function Marketplace() {
 
       {/* Image Zoom Modal */}
       {modal && (
-        <div
-          onClick={() => setModal(null)}
-          style={{
-            position: "fixed",
-            top: 0,
-            left: 0,
-            right: 0,
-            bottom: 0,
-            backgroundColor: "rgba(0,0,0,0.8)",
-            display: "flex",
-            justifyContent: "center",
-            alignItems: "center",
-            zIndex: 999,
-          }}
-        >
+        <div style={styles.overlay} onClick={() => setModal(null)}>
           <img
             src={modal.image}
-            style={{
-              maxWidth: "90%",
-              maxHeight: "90%",
-              borderRadius: 10,
-              boxShadow: "0 0 20px #000",
-            }}
-            alt="Zoom"
+            style={{ maxWidth: "90%", maxHeight: "90%", borderRadius: 10 }}
+            alt="Zoomed"
           />
         </div>
       )}
 
-      {/* Private Inbox Modal */}
+      {/* Inbox Modal */}
       {showModal && selectedUser && (
         <SendPrivateMessage
           recipientUID={selectedUser.uid}
@@ -361,6 +304,8 @@ export default function Marketplace() {
     </div>
   );
 }
+
+// 🧾 Styles
 const styles = {
   page: {
     padding: 20,
@@ -406,13 +351,15 @@ const styles = {
   },
   overlay: {
     position: "fixed",
-    top: 0, left: 0,
+    top: 0,
+    left: 0,
     width: "100vw",
     height: "100vh",
     background: "rgba(0,0,0,0.6)",
     display: "flex",
     justifyContent: "center",
     alignItems: "center",
+    zIndex: 1000,
   },
   modal: {
     background: "#fff",
