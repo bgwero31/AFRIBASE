@@ -1,89 +1,246 @@
-import React, { useEffect, useState, useRef } from "react"; import { getAuth, signOut, onAuthStateChanged, } from "firebase/auth"; import { ref, get, child, update, remove, push, onValue, } from "firebase/database"; import { db } from "../firebase";
+import React, { useEffect, useState } from "react";
+import { getAuth, signOut, onAuthStateChanged } from "firebase/auth";
+import {
+  ref,
+  get,
+  child,
+  update,
+  push,
+  onValue,
+} from "firebase/database";
+import { db } from "../firebase";
 
-const auth = getAuth(); const imgbbKey = "30df4aa05f1af3b3b58ee8a74639e5cf";
+const auth = getAuth();
+const imgbbKey = "30df4aa05f1af3b3b58ee8a74639e5cf";
 
-export default function Profile() { const [user, setUser] = useState(null); const [profileData, setProfileData] = useState({}); const [uploading, setUploading] = useState(false); const [menuOpen, setMenuOpen] = useState(false); const [postedImages, setPostedImages] = useState([]); const [inbox, setInbox] = useState([]); const [unreadCount, setUnreadCount] = useState(0); const [selectedMsg, setSelectedMsg] = useState(null); const [reply, setReply] = useState(""); const [outbox, setOutbox] = useState([]); const [userMap, setUserMap] = useState({}); const inboxRef = useRef(); const audio = useRef(null);
+export default function Profile() {
+  const [user, setUser] = useState(null);
+  const [profileData, setProfileData] = useState({});
+  const [uploading, setUploading] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [inbox, setInbox] = useState([]);
+  const [outbox, setOutbox] = useState([]);
+  const [userMap, setUserMap] = useState({});
+  const [reply, setReply] = useState("");
+  const [selectedMsg, setSelectedMsg] = useState(null);
+  const [loading, setLoading] = useState(true);
 
-useEffect(() => { audio.current = new Audio("/notify.mp3"); }, []);
-
-useEffect(() => { const unsub = onAuthStateChanged(auth, async (u) => { if (u) { setUser(u); const userSnap = await get(child(ref(db), users/${u.uid})); if (userSnap.exists()) setProfileData(userSnap.val());
-
-const allUsersSnap = await get(ref(db, `users`));
-    const map = {};
-    if (allUsersSnap.exists()) {
-      Object.entries(allUsersSnap.val()).forEach(([id, d]) => {
-        map[id] = d.name || "Unknown";
-      });
-    }
-    setUserMap(map);
-
-    const prodSnap = await get(ref(db, `products`));
-    const posts = [];
-    if (prodSnap.exists()) {
-      Object.values(prodSnap.val()).forEach((p) => {
-        if (p.uid === u.uid && p.image) posts.push(p.image);
-      });
-    }
-    setPostedImages(posts);
-
-    inboxRef.current = ref(db, `inbox/${u.uid}`);
-    let firstLoad = true;
-    onValue(inboxRef.current, (snap) => {
-      if (snap.exists()) {
-        const msgs = Object.entries(snap.val())
-          .map(([id, m]) => ({ id, ...m }))
-          .filter((m) => m.message && m.fromName);
-        const sorted = [
-          ...msgs.filter((m) => !m.read).sort((a, b) => b.timestamp - a.timestamp),
-          ...msgs.filter((m) => m.read).sort((a, b) => b.timestamp - a.timestamp),
-        ];
-        if (!firstLoad && sorted.length > inbox.length) {
-          audio.current?.play().catch(() => {});
-        }
-        firstLoad = false;
-        setInbox(sorted);
-        setUnreadCount(sorted.filter((m) => !m.read).length);
-      } else {
-        setInbox([]);
-        setUnreadCount(0);
+  useEffect(() => {
+    const unsub = onAuthStateChanged(auth, async (u) => {
+      if (!u) {
+        window.location.href = "/login";
+        return;
       }
+
+      setUser(u);
+      const snap = await get(child(ref(db), `users/${u.uid}`));
+      if (snap.exists()) setProfileData(snap.val());
+
+      const usersSnap = await get(ref(db, "users"));
+      const map = {};
+      if (usersSnap.exists()) {
+        Object.entries(usersSnap.val()).forEach(([id, d]) => {
+          map[id] = d.name || "Unknown";
+        });
+      }
+      setUserMap(map);
+
+      const inboxRef = ref(db, `inbox/${u.uid}`);
+      onValue(inboxRef, (snap) => {
+        if (snap.exists()) {
+          const msgs = Object.entries(snap.val()).map(([id, m]) => ({ id, ...m }));
+          setInbox(msgs);
+        }
+      });
+
+      const allInbox = await get(ref(db, "inbox"));
+      const sent = [];
+      if (allInbox.exists()) {
+        Object.entries(allInbox.val()).forEach(([toId, msgs]) => {
+          Object.entries(msgs).forEach(([msgId, msg]) => {
+            if (msg.fromId === u.uid) sent.push({ ...msg, to: toId });
+          });
+        });
+      }
+      setOutbox(sent);
+      setLoading(false);
     });
 
-    const allInbox = await get(ref(db, `inbox`));
-    const sent = [];
-    if (allInbox.exists()) {
-      Object.entries(allInbox.val()).forEach(([toId, msgs]) => {
-        Object.entries(msgs).forEach(([msgId, msg]) => {
-          if (msg.fromId === u.uid && msg.message && msg.fromName) {
-            sent.push({ ...msg, id: msgId, to: toId });
-          }
-        });
-      });
-    }
-    setOutbox(sent.sort((a, b) => b.timestamp - a.timestamp));
-  } else {
-    setUser(null);
-  }
-});
-return () => unsub();
+    return () => unsub();
+  }, []);
 
-}, []);
+  const handleImageUpload = async (e) => {
+    const file = e.target.files[0];
+    if (!file || !user) return;
+    setUploading(true);
+    const form = new FormData();
+    form.append("image", file);
+    const res = await fetch(`https://api.imgbb.com/1/upload?key=${imgbbKey}`, {
+      method: "POST",
+      body: form,
+    });
+    const data = await res.json();
+    const url = data.data.url;
+    await update(ref(db, `users/${user.uid}`), { image: url });
+    setProfileData((prev) => ({ ...prev, image: url }));
+    setUploading(false);
+  };
 
-const handleImageUpload = async (e) => { const file = e.target.files[0]; if (!file || !user) return; setUploading(true); const formData = new FormData(); formData.append("image", file); const res = await fetch(https://api.imgbb.com/1/upload?key=${imgbbKey}, { method: "POST", body: formData, }); const data = await res.json(); const url = data.data.url; await update(ref(db, users/${user.uid}), { image: url }); setProfileData((prev) => ({ ...prev, image: url })); setUploading(false); };
+  const handleNameChange = async () => {
+    const name = prompt("New name:");
+    if (!name || !user) return;
+    await update(ref(db, `users/${user.uid}`), { name });
+    setProfileData((prev) => ({ ...prev, name }));
+  };
 
-const handleNameChange = async () => { const name = prompt("Enter new name:"); if (!name || !user) return; await update(ref(db, users/${user.uid}), { name }); setProfileData((prev) => ({ ...prev, name })); };
+  const handleLogout = async () => {
+    await signOut(auth);
+    window.location.href = "/login";
+  };
 
-const handleLogout = async () => { await signOut(auth); window.location.href = "/"; };
+  const sendReply = async () => {
+    if (!reply || !selectedMsg || !user) return;
+    const replyData = {
+      fromId: user.uid,
+      fromName: profileData.name,
+      message: reply,
+      timestamp: Date.now(),
+    };
+    await push(ref(db, `inbox/${selectedMsg.fromId}`), replyData);
+    setReply("");
+    setSelectedMsg(null);
+  };
 
-const sendReply = async () => { if (!reply || !selectedMsg || !user) return; const replyData = { fromId: user.uid, fromName: profileData.name, message: reply, timestamp: Date.now(), }; await push(ref(db, inbox/${selectedMsg.fromId}), replyData); setReply(""); setSelectedMsg(null); alert("Reply sent!"); };
+  const markAsRead = async (msg) => {
+    await update(ref(db, `inbox/${user.uid}/${msg.id}`), { read: true });
+    setSelectedMsg(msg);
+  };
 
-const deleteMessage = async () => { if (!user || !selectedMsg) return; await remove(ref(db, inbox/${user.uid}/${selectedMsg.id})); setSelectedMsg(null); };
+  if (loading) return <p style={{ textAlign: "center", marginTop: "100px" }}>Checking login...</p>;
 
-const markAsRead = async (msg) => { if (!msg.read) { await update(ref(db, inbox/${user.uid}/${msg.id}), { read: true }); } setSelectedMsg(msg); };
+  return (
+    <div
+      style={{
+        backgroundImage: "url('/assets/IMG-20250620-WA0007.jpg')",
+        backgroundSize: "cover",
+        backgroundPosition: "center",
+        minHeight: "100vh",
+        padding: 20,
+      }}
+    >
+      {/* Hamburger */}
+      <div onClick={() => setMenuOpen(!menuOpen)} style={{ fontSize: 26, cursor: "pointer" }}>
+        ☰
+      </div>
 
-const timeAgo = (ts) => { const diff = Math.floor((Date.now() - ts) / 1000); if (diff < 60) return ${diff}s ago; if (diff < 3600) return ${Math.floor(diff / 60)}m ago; if (diff < 86400) return ${Math.floor(diff / 3600)}h ago; return ${Math.floor(diff / 86400)}d ago; };
+      {menuOpen && (
+        <div style={{ background: "#fff", padding: 15, borderRadius: 10, marginTop: 10 }}>
+          <p onClick={() => alert("Preferences soon")}>⚙️ Preferences</p>
+          <p style={{ color: "red" }} onClick={handleLogout}>
+            🚪 Logout
+          </p>
+        </div>
+      )}
 
-if (!user) return <p style={{ padding: 20 }}>Checking...</p>;
+      {/* Profile Card */}
+      <div
+        style={{
+          background: "#fff",
+          padding: 20,
+          borderRadius: 10,
+          maxWidth: 400,
+          margin: "30px auto",
+          textAlign: "center",
+        }}
+      >
+        <div onClick={() => document.getElementById("fileInput").click()} style={{ cursor: "pointer" }}>
+          {profileData.image ? (
+            <img
+              src={profileData.image}
+              alt="profile"
+              style={{ width: 100, height: 100, borderRadius: "50%" }}
+            />
+          ) : (
+            <p style={{ fontSize: 30 }}>👤</p>
+          )}
+        </div>
+        <input id="fileInput" type="file" accept="image/*" onChange={handleImageUpload} style={{ display: "none" }} />
+        <h2>{profileData.name}</h2>
+        <p>{profileData.email}</p>
+        {uploading && <p>Uploading...</p>}
+        <button onClick={handleNameChange}>✏️ Edit Name</button>
 
-return ( <div style={{ padding: 20 }}> {/* Render profile card, inbox, outbox, etc. here /} <h1>{profileData.name}'s Profile</h1> {/ Add more UI elements based on previous discussion */} </div> ); }
+        {/* Inbox */}
+        <h3>📥 Inbox</h3>
+        {inbox.length ? (
+          inbox.map((m) => (
+            <p
+              key={m.id}
+              style={{ textAlign: "left", cursor: "pointer" }}
+              onClick={() => markAsRead(m)}
+            >
+              <strong>{m.fromName}</strong>: {m.message.slice(0, 25)}...
+            </p>
+          ))
+        ) : (
+          <p>No messages</p>
+        )}
 
+        {/* Outbox */}
+        <h3>📤 Outbox</h3>
+        {outbox.length ? (
+          outbox.map((m, i) => (
+            <p key={i} style={{ textAlign: "left" }}>
+              To <strong>{userMap[m.to]}</strong>: {m.message.slice(0, 25)}...
+            </p>
+          ))
+        ) : (
+          <p>No sent messages</p>
+        )}
+      </div>
+
+      {/* Message Modal */}
+      {selectedMsg && (
+        <div
+          style={{
+            position: "fixed",
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            background: "rgba(0,0,0,0.4)",
+            display: "flex",
+            justifyContent: "center",
+            alignItems: "center",
+            zIndex: 100,
+          }}
+          onClick={() => setSelectedMsg(null)}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              background: "#fff",
+              padding: 20,
+              borderRadius: 10,
+              maxWidth: 400,
+              width: "90%",
+              textAlign: "center",
+            }}
+          >
+            <h3>📨 Message</h3>
+            <p><strong>From:</strong> {selectedMsg.fromName}</p>
+            <p>{selectedMsg.message}</p>
+            <input
+              value={reply}
+              onChange={(e) => setReply(e.target.value)}
+              placeholder="Reply..."
+              style={{ width: "90%", padding: 8, borderRadius: 6 }}
+            />
+            <button onClick={sendReply}>Send</button>
+            <button onClick={() => setSelectedMsg(null)}>Close</button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
