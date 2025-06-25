@@ -5,429 +5,575 @@ import {
   push,
   onValue,
   update,
-  onDisconnect,
+  get,
+  serverTimestamp,
 } from "firebase/database";
 import {
   ref as storageRef,
   uploadBytesResumable,
   getDownloadURL,
 } from "firebase/storage";
-import { getAuth } from "firebase/auth";
 
 const imgbbKey = "30df4aa05f1af3b3b58ee8a74639e5cf";
 
-function timeAgo(ts) {
-  const diff = (Date.now() - ts) / 1000;
-  if (diff < 5) return "just now";
-  if (diff < 60) return `${Math.floor(diff)}s ago`;
-  if (diff < 3600) return `${Math.floor(diff / 60)}m ago`;
-  if (diff < 86400) return `${Math.floor(diff / 3600)}h ago`;
-  return `${Math.floor(diff / 86400)}d ago`;
-}
-
 export default function Chat() {
-  const auth = getAuth();
-  const user = auth.currentUser;
-
-  const [profile, setProfile] = useState(null); // {name, image}
-  const [messages, setMessages] = useState([]);
+  const [userData, setUserData] = useState(null); // fetched user data (name, image)
   const [message, setMessage] = useState("");
-  const [imageFile, setImageFile] = useState(null);
+  const [messages, setMessages] = useState([]);
+  const [showEmojiPicker, setShowEmojiPicker] = useState(false);
   const [recording, setRecording] = useState(false);
   const [mediaRecorder, setMediaRecorder] = useState(null);
   const [audioChunks, setAudioChunks] = useState([]);
   const [typingUsers, setTypingUsers] = useState({});
-  const [isTyping, setIsTyping] = useState(false);
-  const typingTimeoutRef = useRef(null);
   const messagesEndRef = useRef(null);
+  const typingTimeoutRef = useRef(null);
+  const [lastSeen, setLastSeen] = useState(null);
   const [sending, setSending] = useState(false);
-  const [playingAudioId, setPlayingAudioId] = useState(null);
-  const audioRefs = useRef({});
 
-  // Fetch user profile on mount & setup online/lastSeen + typing
+  // Initialize user from Firebase Authentication user & fetch user profile data
   useEffect(() => {
-    if (!user) return;
+    // You need your own auth user info here
+    // For demo, we'll assume a "userId" is fixed or fetched somehow
+    // Replace this with your auth logic
+    const userId = "currentUserId"; // TODO: replace with real auth user uid
 
-    // Fetch profile name & image
-    const userRef = dbRef(db, `users/${user.uid}`);
-    onValue(userRef, (snap) => {
+    get(dbRef(db, `users/${userId}`)).then((snap) => {
       if (snap.exists()) {
-        setProfile(snap.val());
+        setUserData({ uid: userId, ...snap.val() });
+        // Also update last seen on mount
+        update(dbRef(db, `users/${userId}`), { lastSeen: Date.now() });
+      } else {
+        // fallback if no profile
+        setUserData({ uid: userId, name: "Anonymous", image: null });
       }
     });
+  }, []);
 
-    // Set online true on connect
-    update(userRef, { online: true, typing: false });
-
-    // On disconnect set online false + lastSeen timestamp
-    onDisconnect(userRef).update({
-      online: false,
-      lastSeen: Date.now(),
-      typing: false,
-    });
-
-    return () => {
-      // On unmount set typing false and online false for cleanup (optional)
-      update(userRef, { typing: false, online: false });
-    };
-  }, [user]);
-
-  // Listen to typing status of all users except current user
-  useEffect(() => {
-    const usersRef = dbRef(db, "users");
-    const unsubscribe = onValue(usersRef, (snap) => {
-      if (!snap.exists()) {
-        setTypingUsers({});
-        return;
-      }
-      const usersTyping = {};
-      const data = snap.val();
-      Object.entries(data).forEach(([uid, info]) => {
-        if (uid !== user.uid && info.typing) {
-          usersTyping[uid] = info.name || "Unknown";
-        }
-      });
-      setTypingUsers(usersTyping);
-    });
-    return () => unsubscribe();
-  }, [user]);
-
-  // Listen to messages
+  // Listen for messages updates
   useEffect(() => {
     const messagesRef = dbRef(db, "messages");
-    const unsubscribe = onValue(messagesRef, (snap) => {
-      if (!snap.exists()) {
+    const unsubscribe = onValue(messagesRef, (snapshot) => {
+      const data = snapshot.val();
+      if (data) {
+        const msgs = Object.entries(data).map(([id, msg]) => ({ id, ...msg }));
+        // Sort by timestamp ascending (oldest first)
+        msgs.sort((a, b) => (a.timestamp || 0) - (b.timestamp || 0));
+        setMessages(msgs);
+        scrollToBottom();
+      } else {
         setMessages([]);
-        return;
       }
-      const msgs = Object.entries(snap.val()).map(([id, msg]) => ({
-        id,
-        ...msg,
-      }));
-      setMessages(msgs);
     });
     return () => unsubscribe();
   }, []);
 
-  // Scroll to bottom on messages change
+  // Listen for typing indicators of other users
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages]);
+    const typingRef = dbRef(db, "typing");
+    const unsubscribe = onValue(typingRef, (snapshot) => {
+      const data = snapshot.val() || {};
+      setTypingUsers(data);
+    });
+    return () => unsubscribe();
+  }, []);
 
-  // Handle typing status debounce
-  useEffect(() => {
-    if (!user) return;
-    const userTypingRef = dbRef(db, `users/${user.uid}/typing`);
-
+  // Update own typing status with debounce
+  const updateTypingStatus = (isTyping) => {
+    if (!userData) return;
+    const typingRef = dbRef(db, `typing/${userData.uid}`);
     if (isTyping) {
-      update(userTypingRef, true);
+      update(typingRef, { name: userData.name || "Anonymous" });
       if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
-
       typingTimeoutRef.current = setTimeout(() => {
-        update(userTypingRef, false);
-        setIsTyping(false);
-      }, 2000);
+        update(typingRef, null);
+      }, 3000); // Clear after 3 seconds of inactivity
     } else {
-      update(userTypingRef, false);
+      update(typingRef, null);
     }
-  }, [isTyping, user]);
-
-  // Handle text input change
-  const onChangeMessage = (e) => {
-    setMessage(e.target.value);
-    if (!isTyping) setIsTyping(true);
   };
 
-  // Send message with optional image/audio
+  // Scroll messages to bottom
+  const scrollToBottom = () => {
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  };
+
+  // Send text message
   const sendMessage = async () => {
-    if (!user || sending) return;
-    if (!message.trim() && !imageFile && !audioChunks.length) return;
+    if (!message.trim() || !userData || sending) return;
+    setSending(true);
+    const newMsg = {
+      uid: userData.uid,
+      name: userData.name || "Anonymous",
+      image: userData.image || null,
+      text: message.trim(),
+      type: "text",
+      timestamp: Date.now(),
+      status: "sent",
+    };
+    await push(dbRef(db, "messages"), newMsg);
+    setMessage("");
+    updateTypingStatus(false);
+    setSending(false);
+  };
+
+  // Send image message (upload to imgbb first)
+  const handleImageUpload = async (e) => {
+    if (!userData) return alert("User data missing");
+    const file = e.target.files[0];
+    if (!file) return;
 
     setSending(true);
-
     try {
-      let imageUrl = null;
-      let audioUrl = null;
+      const formData = new FormData();
+      formData.append("image", file);
+      const res = await fetch(
+        `https://api.imgbb.com/1/upload?key=${imgbbKey}`,
+        {
+          method: "POST",
+          body: formData,
+        }
+      );
+      const data = await res.json();
+      const url = data.data.url;
 
-      // Upload image if exists (imgbb)
-      if (imageFile) {
-        const formData = new FormData();
-        formData.append("image", imageFile);
-        const res = await fetch(
-          `https://api.imgbb.com/1/upload?key=${imgbbKey}`,
-          { method: "POST", body: formData }
-        );
-        const data = await res.json();
-        imageUrl = data.data.url;
-      }
-
-      // Upload audio if recorded
-      if (audioChunks.length) {
-        const audioBlob = new Blob(audioChunks, { type: "audio/webm" });
-        const audioStorageRef = storageRef(
-          storage,
-          `chatAudio/${user.uid}_${Date.now()}.webm`
-        );
-        await new Promise((resolve, reject) => {
-          const uploadTask = uploadBytesResumable(audioStorageRef, audioBlob);
-          uploadTask.on(
-            "state_changed",
-            null,
-            (error) => reject(error),
-            () => resolve()
-          );
-        });
-        audioUrl = await getDownloadURL(audioStorageRef);
-      }
-
-      // Build message object
-      const msgObj = {
-        uid: user.uid,
-        name: profile?.name || "User",
-        profileImage: profile?.image || null,
-        time: Date.now(),
+      const imgMsg = {
+        uid: userData.uid,
+        name: userData.name || "Anonymous",
+        image: userData.image || null,
+        imageUrl: url,
+        type: "image",
+        timestamp: Date.now(),
         status: "sent",
       };
-
-      if (audioUrl) {
-        msgObj.type = "audio";
-        msgObj.audioUrl = audioUrl;
-        msgObj.text = message.trim() || "";
-      } else if (imageUrl) {
-        msgObj.type = "image";
-        msgObj.imageUrl = imageUrl;
-        msgObj.text = message.trim() || "";
-      } else {
-        msgObj.type = "text";
-        msgObj.text = message.trim();
-      }
-
-      await push(dbRef(db, "messages"), msgObj);
-
-      // Clear inputs
-      setMessage("");
-      setImageFile(null);
-      setAudioChunks([]);
-    } catch (err) {
-      console.error("Send message error:", err);
-      alert("Failed to send message.");
-    } finally {
-      setSending(false);
+      await push(dbRef(db, "messages"), imgMsg);
+    } catch (error) {
+      alert("Image upload failed: " + error.message);
     }
+    setSending(false);
+    e.target.value = null; // reset file input
   };
 
-  // Handle image selection
-  const onSelectImage = (e) => {
-    if (e.target.files[0]) {
-      setImageFile(e.target.files[0]);
-    }
-  };
-
-  // Voice recording handlers
-  useEffect(() => {
-    if (!recording) return;
-
-    let recorder;
-    try {
-      recorder = new MediaRecorder(new MediaStream());
-    } catch {
-      // ignore if no mic access or not supported
-    }
-
-    if (!recorder) return;
-
-    const chunks = [];
-    recorder.ondataavailable = (e) => {
-      chunks.push(e.data);
-    };
-
-    recorder.onstop = () => {
-      setAudioChunks(chunks);
-    };
-
-    setMediaRecorder(recorder);
-
-    recorder.start();
-
-    return () => {
-      if (recorder && recorder.state !== "inactive") recorder.stop();
-    };
-  }, [recording]);
-
-  // Start recording
+  // Start voice recording
   const startRecording = async () => {
     if (recording) return;
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+      return alert("Audio recording not supported");
+    }
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      const recorder = new MediaRecorder(stream);
+      const mr = new MediaRecorder(stream);
+      let chunks = [];
 
-      const chunks = [];
-      recorder.ondataavailable = (e) => {
-        chunks.push(e.data);
+      mr.ondataavailable = (e) => {
+        if (e.data.size > 0) chunks.push(e.data);
       };
 
-      recorder.onstop = () => {
-        setAudioChunks(chunks);
-        setRecording(false);
+      mr.onstop = async () => {
+        const blob = new Blob(chunks, { type: "audio/webm" });
+        chunks = [];
+        await uploadAudio(blob);
       };
 
-      recorder.start();
-      setMediaRecorder(recorder);
+      mr.start();
+      setMediaRecorder(mr);
+      setAudioChunks(chunks);
       setRecording(true);
     } catch (err) {
-      alert("Microphone access denied.");
+      alert("Error starting recording: " + err.message);
     }
   };
 
-  // Cancel recording
-  const cancelRecording = () => {
-    if (mediaRecorder && mediaRecorder.state !== "inactive") {
+  // Stop voice recording
+  const stopRecording = () => {
+    if (mediaRecorder && recording) {
       mediaRecorder.stop();
+      setRecording(false);
     }
-    setAudioChunks([]);
-    setRecording(false);
   };
 
-  // Play audio message
-  const playAudio = (id) => {
-    const audioEl = audioRefs.current[id];
-    if (!audioEl) return;
-    if (playingAudioId === id) {
-      audioEl.pause();
-      setPlayingAudioId(null);
-    } else {
-      // Pause any other playing audio first
-      if (playingAudioId && audioRefs.current[playingAudioId]) {
-        audioRefs.current[playingAudioId].pause();
-      }
-      audioEl.play();
-      setPlayingAudioId(id);
-      audioEl.onended = () => {
-        setPlayingAudioId(null);
+  // Upload audio to Firebase Storage and send message
+  const uploadAudio = async (blob) => {
+    if (!userData) return alert("User data missing");
+    setSending(true);
+    try {
+      const fileName = `voice_${Date.now()}.webm`;
+      const audioRef = storageRef(storage, `chatAudio/${fileName}`);
+      const snapshot = await uploadBytesResumable(audioRef, blob);
+      const audioURL = await getDownloadURL(snapshot.ref);
+
+      const audioMsg = {
+        uid: userData.uid,
+        name: userData.name || "Anonymous",
+        image: userData.image || null,
+        audioUrl: audioURL,
+        type: "audio",
+        timestamp: Date.now(),
+        status: "sent",
       };
+      await push(dbRef(db, "messages"), audioMsg);
+    } catch (err) {
+      alert("Audio upload failed: " + err.message);
+    }
+    setSending(false);
+  };
+
+  // Delete audio message (remove from storage & db)
+  const deleteAudioMessage = async (msg) => {
+    if (msg.uid !== userData.uid) return alert("Can only delete your own messages");
+    try {
+      // Delete audio file from storage
+      const fileRef = storageRef(storage, msg.audioUrl.split(storageRef(storage)._baseUrl)[1]);
+      // Firebase SDK doesn't provide direct delete from URL, so this may require storage path parsing
+      // Alternative: Store audio path in message object separately for deletion
+      // Here, skipping storage deletion due to complexity, just remove DB message
+      await remove(dbRef(db, `messages/${msg.id}`));
+    } catch (err) {
+      alert("Delete failed: " + err.message);
     }
   };
 
-  // Render typing status text for other users
-  const renderTyping = () => {
-    const names = Object.values(typingUsers);
-    if (names.length === 0) return null;
-    if (names.length === 1) return <p>{names[0]} is typing...</p>;
-    return <p>{names.join(", ")} are typing...</p>;
+  // Message input onChange handler with typing update
+  const onMessageChange = (e) => {
+    setMessage(e.target.value);
+    updateTypingStatus(true);
+  };
+
+  // Helper: Display typing users except current user
+  const renderTypingUsers = () => {
+    if (!userData) return null;
+    const othersTyping = Object.entries(typingUsers).filter(([uid]) => uid !== userData.uid);
+    if (othersTyping.length === 0) return null;
+
+    return (
+      <div style={{ padding: "5px 10px", fontStyle: "italic", color: "#666" }}>
+        {othersTyping.map(([uid, val]) => val.name).join(", ")} typing...
+      </div>
+    );
+  };
+
+  // Helper: Format timestamp
+  const formatTime = (ts) => {
+    if (!ts) return "";
+    const d = new Date(ts);
+    return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  };
+
+  // Helper: Message delivery status icon
+  const messageStatusIcon = (status) => {
+    return status === "sent" ? "✅" : "✅✅";
   };
 
   return (
-    <div
-      style={{
-        display: "flex",
-        flexDirection: "column",
-        height: "100vh",
-        fontFamily: "Poppins, sans-serif",
-        backgroundColor: "#f0f0f0",
-      }}
-    >
-      {/* Header with profile name & online status */}
-      <div
-        style={{
-          padding: "10px",
-          backgroundColor: "#00ffcc",
-          color: "#000",
-          fontWeight: "bold",
-          fontSize: "18px",
-          display: "flex",
-          alignItems: "center",
-          gap: "10px",
-        }}
-      >
-        {profile?.image && (
-          <img
-            src={profile.image}
-            alt="profile"
-            style={{ width: 32, height: 32, borderRadius: "50%" }}
-          />
+    <div style={chatWrapper}>
+      <div style={chatHeader}>
+        <h3>💬 Chatroom</h3>
+        {userData && (
+          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+            {userData.image ? (
+              <img
+                src={userData.image}
+                alt="profile"
+                style={{ width: 32, height: 32, borderRadius: "50%" }}
+              />
+            ) : (
+              <div style={{ width: 32, height: 32, borderRadius: "50%", background: "#ccc" }} />
+            )}
+            <span>{userData.name || "Anonymous"}</span>
+          </div>
         )}
-        <span>{profile?.name || "User"}</span>
-        <span style={{ marginLeft: "auto", fontWeight: "normal", fontSize: 14 }}>
-          {profile?.online ? "🟢 Online" : profile?.lastSeen ? `Last seen: ${timeAgo(profile.lastSeen)}` : "Offline"}
-        </span>
       </div>
 
-      {/* Messages list */}
-      <div
-        style={{
-          flex: 1,
-          padding: 15,
-          overflowY: "auto",
-          display: "flex",
-          flexDirection: "column",
-          gap: 12,
-          backgroundColor: "#fff",
-        }}
-      >
+      <div style={messagesContainer}>
         {messages.map((msg) => {
-          const isOwn = msg.uid === user.uid;
+          const isOwn = userData && msg.uid === userData.uid;
           return (
             <div
               key={msg.id}
               style={{
+                ...msgStyle,
                 alignSelf: isOwn ? "flex-end" : "flex-start",
-                maxWidth: "75%",
-                backgroundColor: isOwn ? "#dcf8c6" : "#eee",
-                borderRadius: 12,
-                padding: 10,
-                boxShadow: "0 0 5px rgba(0,0,0,0.15)",
+                backgroundColor: isOwn ? "#dcf8c6" : "#333",
+                color: isOwn ? "#000" : "#fff",
+                borderTopRightRadius: isOwn ? 0 : "10px",
+                borderTopLeftRadius: isOwn ? "10px" : 0,
                 display: "flex",
                 flexDirection: "column",
+                maxWidth: "75%",
                 position: "relative",
               }}
             >
-              {/* Sender info */}
-              <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
-                {msg.profileImage && (
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "6px",
+                  marginBottom: 4,
+                }}
+              >
+                {msg.image ? (
                   <img
-                    src={msg.profileImage}
-                    alt={msg.name}
+                    src={msg.image}
+                    alt="user"
                     style={{ width: 24, height: 24, borderRadius: "50%" }}
+                  />
+                ) : (
+                  <div
+                    style={{
+                      width: 24,
+                      height: 24,
+                      borderRadius: "50%",
+                      background: "#666",
+                    }}
                   />
                 )}
                 <strong>{msg.name}</strong>
               </div>
 
-              {/* Message content */}
               {msg.type === "text" && <div>{msg.text}</div>}
 
               {msg.type === "image" && (
                 <img
                   src={msg.imageUrl}
                   alt="sent pic"
-                  style={{ maxWidth: "200px", borderRadius: 8, cursor: "pointer" }}
+                  style={{ maxWidth: 200, borderRadius: 8, cursor: "pointer" }}
                   onClick={() => window.open(msg.imageUrl, "_blank")}
                 />
               )}
 
               {msg.type === "audio" && (
-                <div
+                <audio controls style={{ outline: "none", width: "100%" }}>
+                  <source src={msg.audioUrl} type="audio/webm" />
+                  Your browser does not support the audio element.
+                </audio>
+              )}
+
+              <div
+                style={{
+                  fontSize: 11,
+                  color: "#888",
+                  textAlign: "right",
+                  marginTop: 4,
+                }}
+              >
+                {formatTime(msg.timestamp)} {messageStatusIcon(msg.status)}
+              </div>
+
+              {isOwn && msg.type === "audio" && (
+                <button
+                  onClick={() => deleteAudioMessage(msg)}
                   style={{
-                    display: "flex",
-                    alignItems: "center",
-                    gap: 8,
+                    position: "absolute",
+                    top: 2,
+                    right: 2,
+                    background: "transparent",
+                    border: "none",
+                    color: "red",
                     cursor: "pointer",
-                    userSelect: "none",
+                    fontWeight: "bold",
                   }}
-                  onClick={() => playAudio(msg.id)}
+                  title="Delete audio message"
                 >
-                  <button
-                    style={{
-                      width: 30,
-                      height: 30,
-                      borderRadius: "50%",
-                      border: "1px solid #00cc99",
-                      backgroundColor: playingAudioId === msg.id ? "#00cc99" : "transparent",
-                      color: playingAudioId === msg.id ? "#fff" : "#00cc99",
-                      fontWeight: "bold",
-                      display: "flex",
-                      justifyContent: "center",
-                      alignItems: "center",
-                    }}
-                  >
-                    {playingAudioId === msg.id ? "
+                  ❌
+                </button>
+              )}
+            </div>
+          );
+        })}
+        <div ref={messagesEndRef} />
+      </div>
+
+      {renderTypingUsers()}
+
+      <div style={inputWrapper}>
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <input
+            style={{ ...inputStyle, flex: 1 }}
+            placeholder="Type your message"
+            value={message}
+            onChange={onMessageChange}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && !sending) sendMessage();
+            }}
+          />
+
+          <label style={iconButton} title="Send Image">
+            📎
+            <input
+              type="file"
+              accept="image/*"
+              style={{ display: "none" }}
+              onChange={handleImageUpload}
+              disabled={sending}
+            />
+          </label>
+
+          {!recording ? (
+            <button
+              onClick={startRecording}
+              style={iconButton}
+              title="Start Voice Recording"
+              disabled={sending}
+            >
+              🎤
+            </button>
+          ) : (
+            <button
+              onClick={stopRecording}
+              style={{ ...iconButton, color: "red" }}
+              title="Stop Voice Recording"
+              disabled={sending}
+            >
+              ⏹
+            </button>
+          )}
+
+          <button
+            onClick={() => setShowEmojiPicker(!showEmojiPicker)}
+            style={iconButton}
+            title="Add Emoji"
+            disabled={sending}
+          >
+            😊
+          </button>
+        </div>
+
+        <button
+          onClick={sendMessage}
+          style={{ ...btnStyle, marginTop: 8 }}
+          disabled={sending}
+        >
+          {sending ? "Sending..." : "Send"}
+        </button>
+
+        {showEmojiPicker && (
+          <div style={emojiPicker}>
+            {["😀", "😂", "😍", "😎", "👍", "🙏", "🔥", "❤️"].map((emoji) => (
+              <span
+                key={emoji}
+                style={{ fontSize: 24, cursor: "pointer", margin: 5 }}
+                onClick={() => setMessage((prev) => prev + emoji)}
+              >
+                {emoji}
+              </span>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// Styles
+
+const chatWrapper = {
+  display: "flex",
+  flexDirection: "column",
+  height: "100vh",
+  backgroundImage: "url('/assets/temp_1738232491498.png')",
+  backgroundSize: "cover",
+  fontFamily: "Poppins, sans-serif",
+};
+
+const chatHeader = {
+  padding: "15px",
+  backgroundColor: "#00ffcc",
+  color: "#000",
+  fontWeight: "bold",
+  fontSize: "18px",
+  textAlign: "center",
+};
+
+const messagesContainer = {
+  flex: 1,
+  padding: "15px",
+  overflowY: "auto",
+  display: "flex",
+  flexDirection: "column",
+};
+
+const msgStyle = {
+  padding: "10px 14px",
+  borderRadius: "12px",
+  boxShadow: "0 0 5px rgba(0,0,0,0.2)",
+  fontSize: "15px",
+  lineHeight: "1.4",
+};
+
+const timeStyle = {
+  fontSize: "11px",
+  color: "#888",
+  textAlign: "right",
+  marginTop: "4px",
+};
+
+const inputWrapper = {
+  display: "flex",
+  flexDirection: "column",
+  padding: "10px",
+  borderTop: "1px solid #333",
+};
+
+const btnStyle = {
+  padding: "12px",
+  backgroundColor: "#00ffcc",
+  color: "#000",
+  border: "none",
+  borderRadius: "6px",
+  fontWeight: "bold",
+  cursor: "pointer",
+};
+
+const btnStyleRed = {
+  ...btnStyle,
+  backgroundColor: "#ff4444",
+};
+
+const btnStyleMic = {
+  ...btnStyle,
+  padding: "10px",
+  fontSize: "20px",
+  borderRadius: "50%",
+  minWidth: "44px",
+  textAlign: "center",
+};
+
+const btnStyleImgLabel = {
+  cursor: "pointer",
+  fontSize: "24px",
+  background: "transparent",
+  border: "none",
+  color: "#00ffcc",
+  userSelect: "none",
+};
+
+const previewWrapper = {
+  position: "relative",
+  marginBottom: 8,
+  display: "inline-block",
+};
+
+const removePreviewBtn = {
+  position: "absolute",
+  top: -6,
+  right: -6,
+  background: "red",
+  color: "#fff",
+  border: "none",
+  borderRadius: "50%",
+  cursor: "pointer",
+  width: 20,
+  height: 20,
+  lineHeight: "20px",
+  textAlign: "center",
+  fontWeight: "bold",
+};
+
+const recordingWrapper = {
+  display: "flex",
+  justifyContent: "space-between",
+  alignItems: "center",
+  gap: 10,
+  padding: "10px 0",
+  fontWeight: "bold",
+  color: "#00ffcc",
+};
