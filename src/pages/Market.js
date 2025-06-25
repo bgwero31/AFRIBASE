@@ -1,7 +1,7 @@
 // Marketplace.js
 import React, { useState, useEffect } from "react";
 import { db } from "../firebase";
-import { ref, push, onValue, update, remove } from "firebase/database";
+import { ref, push, onValue, remove, update } from "firebase/database";
 import { getAuth } from "firebase/auth";
 import SendPrivateMessage from "../components/SendPrivateMessage";
 
@@ -48,9 +48,9 @@ export default function Marketplace() {
     }
 
     const user = auth.currentUser;
-    if (!user) return alert("Please login to post products.");
-    setUploading(true);
+    if (!user) return alert("Login to post");
 
+    setUploading(true);
     try {
       const formData = new FormData();
       formData.append("image", image);
@@ -72,7 +72,7 @@ export default function Marketplace() {
         dislikes: [],
         comments: [],
         ownerUID: user.uid,
-        ownerName: user.displayName || "Unknown",
+        ownerName: user.displayName || "User",
         ownerPhoneNumber: user.phoneNumber || "",
       });
 
@@ -82,10 +82,44 @@ export default function Marketplace() {
       setCategory("");
       setImage(null);
     } catch (err) {
-      alert("Image upload failed: " + err.message);
+      alert("Upload failed: " + err.message);
     } finally {
       setUploading(false);
     }
+  };
+
+  const toggleLike = async (product) => {
+    const user = auth.currentUser;
+    if (!user) return;
+    const userId = user.uid;
+    let likes = product.likes || [];
+    let dislikes = product.dislikes || [];
+
+    if (likes.includes(userId)) {
+      likes = likes.filter((id) => id !== userId);
+    } else {
+      likes.push(userId);
+      dislikes = dislikes.filter((id) => id !== userId);
+    }
+
+    await update(ref(db, `products/${product.id}`), { likes, dislikes });
+  };
+
+  const toggleDislike = async (product) => {
+    const user = auth.currentUser;
+    if (!user) return;
+    const userId = user.uid;
+    let likes = product.likes || [];
+    let dislikes = product.dislikes || [];
+
+    if (dislikes.includes(userId)) {
+      dislikes = dislikes.filter((id) => id !== userId);
+    } else {
+      dislikes.push(userId);
+      likes = likes.filter((id) => id !== userId);
+    }
+
+    await update(ref(db, `products/${product.id}`), { likes, dislikes });
   };
 
   const handleComment = (id) => {
@@ -104,73 +138,39 @@ export default function Marketplace() {
     setCommentInputs({ ...commentInputs, [id]: "" });
   };
 
-  const deleteProduct = async (id) => {
-    const confirm = window.confirm("Delete this product?");
-    if (!confirm) return;
-    await remove(ref(db, `products/${id}`));
+  const deleteComment = (productId, commentId) => {
+    remove(ref(db, `products/${productId}/comments/${commentId}`));
   };
 
-  const toggleLike = async (product) => {
-    const user = auth.currentUser;
-    if (!user) return alert("Login to like.");
-
-    const uid = user.uid;
-    const likes = product.likes || [];
-    const updatedLikes = likes.includes(uid)
-      ? likes.filter((id) => id !== uid)
-      : [...likes, uid];
-
-    await update(ref(db, `products/${product.id}`), {
-      likes: updatedLikes,
-    });
+  const deleteProduct = (id) => {
+    const confirmDelete = window.confirm("Delete this product?");
+    if (confirmDelete) {
+      remove(ref(db, `products/${id}`));
+    }
   };
 
-  const toggleDislike = async (product) => {
-    const user = auth.currentUser;
-    if (!user) return alert("Login to dislike.");
-
-    const uid = user.uid;
-    const dislikes = product.dislikes || [];
-    const updatedDislikes = dislikes.includes(uid)
-      ? dislikes.filter((id) => id !== uid)
-      : [...dislikes, uid];
-
-    await update(ref(db, `products/${product.id}`), {
-      dislikes: updatedDislikes,
-    });
+  const getWhatsAppLink = (number, title) => {
+    const phone = number?.replace(/\D/g, "");
+    const text = encodeURIComponent(`Hello, I'm interested in "${title}"`);
+    return `https://wa.me/${phone}?text=${text}`;
   };
 
-  const filtered = products.filter(
-    (p) =>
-      p.title.toLowerCase().includes(search.toLowerCase()) ||
-      p.description.toLowerCase().includes(search.toLowerCase())
+  const filtered = products.filter((p) =>
+    (p.title + p.description).toLowerCase().includes(search.toLowerCase())
   );
 
   return (
-    <div style={pageStyle}>
+    <div style={styles.page}>
       <input
-        style={searchInput}
-        placeholder="🔍 Search products..."
+        style={styles.search}
+        placeholder="🔍 Search..."
         value={search}
         onChange={(e) => setSearch(e.target.value)}
       />
-
       <div>
-        <input
-          placeholder="Title"
-          value={title}
-          onChange={(e) => setTitle(e.target.value)}
-        />
-        <input
-          placeholder="Description"
-          value={description}
-          onChange={(e) => setDescription(e.target.value)}
-        />
-        <input
-          placeholder="Price"
-          value={price}
-          onChange={(e) => setPrice(e.target.value)}
-        />
+        <input placeholder="Title" value={title} onChange={(e) => setTitle(e.target.value)} />
+        <input placeholder="Description" value={description} onChange={(e) => setDescription(e.target.value)} />
+        <input placeholder="Price" value={price} onChange={(e) => setPrice(e.target.value)} />
         <select value={category} onChange={(e) => setCategory(e.target.value)}>
           <option value="">Category</option>
           <option value="Electronics">📱 Electronics</option>
@@ -180,85 +180,76 @@ export default function Marketplace() {
           <option value="Other">🔧 Other</option>
         </select>
         <input type="file" onChange={(e) => setImage(e.target.files[0])} />
-        <button onClick={handlePost} disabled={uploading}>
-          {uploading ? "Uploading..." : "📤 Post"}
-        </button>
+        <button onClick={handlePost} disabled={uploading}>{uploading ? "Uploading..." : "Post"}</button>
       </div>
 
-      <div style={productGrid}>
+      <div style={styles.grid}>
         {filtered.map((p) => (
-          <div key={p.id} style={cardStyle}>
+          <div key={p.id} style={styles.card}>
             {auth.currentUser?.uid === p.ownerUID && (
-              <button onClick={() => deleteProduct(p.id)} style={closeBtnStyle}>
-                ❌
-              </button>
+              <button onClick={() => deleteProduct(p.id)} style={styles.close}>❌</button>
             )}
-
             <img
               src={p.image}
-              style={imgStyle}
               alt={p.title}
+              style={styles.image}
               onClick={() => setModal(p)}
             />
             <h3>{p.title}</h3>
             <p>{p.description}</p>
-            <strong style={{ color: "#00cc99" }}>{p.price}</strong>
+            <p style={{ color: "#00cc88" }}>{p.price}</p>
             <div>📂 {p.category}</div>
-            <div style={{ fontSize: "12px", color: "#333" }}>{p.time}</div>
+            <div style={{ fontSize: 12 }}>{p.time}</div>
 
             <div>
               <button onClick={() => toggleLike(p)}>👍 {p.likes.length}</button>
               <button onClick={() => toggleDislike(p)}>👎 {p.dislikes.length}</button>
+              <button onClick={() => {
+                setSelectedUser({ uid: p.ownerUID, name: p.ownerName });
+                setShowModal(true);
+              }}>Chat Seller</button>
+              <a href={getWhatsAppLink(p.ownerPhoneNumber, p.title)} target="_blank" rel="noopener noreferrer">
+                WhatsApp Seller
+              </a>
             </div>
 
             <div>
               <button onClick={() => setShowComments({ ...showComments, [p.id]: !showComments[p.id] })}>
-                💬 Comments ({p.comments.length})
+                💬 {p.comments.length} Comments
               </button>
               {showComments[p.id] && (
-                <div style={{ maxHeight: "100px", overflowY: "auto", marginTop: "5px" }}>
+                <div style={{ maxHeight: 100, overflowY: "auto" }}>
                   {p.comments.map((c) => (
                     <p key={c.id}>
                       <strong>{c.name}</strong>: {c.text}
+                      {auth.currentUser?.uid === c.uid && (
+                        <span onClick={() => deleteComment(p.id, c.id)} style={{ color: "red", cursor: "pointer" }}>
+                          ❌
+                        </span>
+                      )}
                     </p>
                   ))}
                 </div>
               )}
               <input
-                style={commentStyle}
-                placeholder="Add a comment..."
+                placeholder="Add comment..."
                 value={commentInputs[p.id] || ""}
                 onChange={(e) =>
                   setCommentInputs({ ...commentInputs, [p.id]: e.target.value })
                 }
               />
-              <button style={buttonStyle} onClick={() => handleComment(p.id)}>
-                Post
-              </button>
+              <button onClick={() => handleComment(p.id)}>Post</button>
             </div>
-
-            <button
-              onClick={() => {
-                setSelectedUser({ uid: p.ownerUID, name: p.ownerName });
-                setShowModal(true);
-              }}
-              style={buttonStyle}
-            >
-              Chat Seller
-            </button>
           </div>
         ))}
       </div>
 
       {modal && (
-        <div style={modalOverlay} onClick={() => setModal(null)}>
-          <div style={modalContent} onClick={(e) => e.stopPropagation()}>
-            <img src={modal.image} style={modalImage} alt={modal.title} />
+        <div style={styles.overlay} onClick={() => setModal(null)}>
+          <div style={styles.modal} onClick={(e) => e.stopPropagation()}>
+            <img src={modal.image} alt="Zoom" style={{ width: "100%", borderRadius: 10 }} />
             <h2>{modal.title}</h2>
             <p>{modal.description}</p>
-            <p>📂 {modal.category}</p>
-            <p style={{ color: "#00cc99", fontWeight: "bold" }}>{modal.price}</p>
-            <p style={{ fontSize: "12px", color: "#aaa" }}>{modal.time}</p>
           </div>
         </div>
       )}
@@ -268,107 +259,70 @@ export default function Marketplace() {
           recipientUID={selectedUser.uid}
           recipientName={selectedUser.name}
           onClose={() => setShowModal(false)}
-          productId={null}
         />
       )}
     </div>
   );
 }
 
-// Styles
-const pageStyle = {
-  padding: 20,
-  minHeight: "100vh",
-  fontFamily: "Poppins",
-};
-
-const searchInput = {
-  width: "100%",
-  padding: 10,
-  fontSize: 16,
-  borderRadius: 10,
-  margin: "10px 0",
-  border: "1px solid #ccc",
-};
-
-const productGrid = {
-  display: "grid",
-  gridTemplateColumns: "repeat(auto-fill, minmax(250px, 1fr))",
-  gap: 20,
-  marginTop: 20,
-};
-
-const cardStyle = {
-  background: "#fff",
-  padding: 15,
-  borderRadius: 15,
-  boxShadow: "0 2px 8px rgba(0,0,0,0.2)",
-  position: "relative",
-};
-
-const imgStyle = {
-  width: "100%",
-  height: "200px",
-  objectFit: "cover",
-  borderRadius: "10px",
-  cursor: "pointer",
-};
-
-const commentStyle = {
-  width: "100%",
-  padding: 8,
-  borderRadius: 8,
-  border: "1px solid #ccc",
-  marginTop: 5,
-};
-
-const buttonStyle = {
-  background: "#00cc88",
-  color: "#fff",
-  padding: "6px 12px",
-  borderRadius: 6,
-  border: "none",
-  cursor: "pointer",
-  marginTop: 5,
-};
-
-const modalOverlay = {
-  position: "fixed",
-  top: 0,
-  left: 0,
-  width: "100vw",
-  height: "100vh",
-  background: "rgba(0,0,0,0.5)",
-  display: "flex",
-  justifyContent: "center",
-  alignItems: "center",
-};
-
-const modalContent = {
-  background: "#fff",
-  padding: 20,
-  borderRadius: 10,
-  width: "90%",
-  maxWidth: 400,
-  textAlign: "center",
-};
-
-const modalImage = {
-  width: "100%",
-  height: "250px",
-  objectFit: "cover",
-  borderRadius: 10,
-};
-
-const closeBtnStyle = {
-  position: "absolute",
-  top: 8,
-  right: 10,
-  cursor: "pointer",
-  background: "#ff4444",
-  color: "white",
-  border: "none",
-  borderRadius: "50%",
-  padding: "5px 10px",
-  fontWeight: "bold",
+const styles = {
+  page: {
+    padding: 20,
+    minHeight: "100vh",
+    background: "white",
+    fontFamily: "Poppins",
+  },
+  search: {
+    width: "100%",
+    padding: 10,
+    fontSize: 16,
+    marginBottom: 10,
+  },
+  grid: {
+    display: "grid",
+    gridTemplateColumns: "repeat(auto-fill, minmax(250px, 1fr))",
+    gap: 20,
+  },
+  card: {
+    background: "#fff",
+    borderRadius: 12,
+    padding: 10,
+    boxShadow: "0 0 5px rgba(0,0,0,0.1)",
+    position: "relative",
+  },
+  image: {
+    width: "100%",
+    height: 200,
+    objectFit: "cover",
+    borderRadius: 10,
+    cursor: "zoom-in",
+  },
+  close: {
+    position: "absolute",
+    top: 5,
+    right: 5,
+    background: "red",
+    color: "#fff",
+    border: "none",
+    borderRadius: "50%",
+    cursor: "pointer",
+    fontWeight: "bold",
+  },
+  overlay: {
+    position: "fixed",
+    top: 0, left: 0,
+    width: "100vw",
+    height: "100vh",
+    background: "rgba(0,0,0,0.6)",
+    display: "flex",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  modal: {
+    background: "#fff",
+    padding: 20,
+    borderRadius: 10,
+    width: "90%",
+    maxWidth: 400,
+  },
 };
