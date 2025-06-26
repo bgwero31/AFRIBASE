@@ -1,21 +1,17 @@
+// ✅ Chat.js — With delete, read receipts, and open private inbox
 import React, { useState, useEffect, useRef } from "react";
-import { db, storage } from "../firebase";
+import { db } from "../firebase";
 import {
   ref as dbRef,
   push,
   onValue,
-  remove,
   set,
   get,
+  remove,
   update,
 } from "firebase/database";
-import {
-  ref as storageRef,
-  uploadBytesResumable,
-  getDownloadURL,
-  deleteObject,
-} from "firebase/storage";
 import { getAuth, onAuthStateChanged } from "firebase/auth";
+import { Link } from "react-router-dom";
 
 export default function Chat() {
   const [userId, setUserId] = useState(null);
@@ -24,58 +20,74 @@ export default function Chat() {
   const [message, setMessage] = useState("");
   const [messages, setMessages] = useState([]);
   const [typingUsers, setTypingUsers] = useState([]);
-  const [showEmojiPicker, setShowEmojiPicker] = useState(false);
-  const [recording, setRecording] = useState(false);
-  const mediaRecorderRef = useRef(null);
-  const audioChunksRef = useRef([]);
   const messagesEndRef = useRef(null);
   const typingTimeoutRef = useRef(null);
 
-  // 🔐 Get user info
+  // Get logged in user
   useEffect(() => {
     const auth = getAuth();
-    const unsubscribe = onAuthStateChanged(auth, (user) => {
+    return onAuthStateChanged(auth, (user) => {
       if (user) {
         setUserId(user.uid);
         get(dbRef(db, `users/${user.uid}`)).then((snap) => {
-          if (snap.exists()) {
-            const data = snap.val();
+          const data = snap.val();
+          if (data) {
             setUserName(data.name || "User");
             setUserImage(data.image || null);
           }
         });
       }
     });
-    return () => unsubscribe();
   }, []);
 
-  // 🔁 Load messages
+  // Load messages
   useEffect(() => {
     const chatRef = dbRef(db, "messages");
     return onValue(chatRef, (snapshot) => {
       const data = snapshot.val();
       const msgs = data
-        ? Object.entries(data)
-            .map(([id, msg]) => ({ id, ...msg }))
-            .sort((a, b) => a.timestamp - b.timestamp)
+        ? Object.entries(data).map(([id, msg]) => ({ id, ...msg }))
         : [];
-      setMessages(msgs);
+      const sorted = msgs.sort((a, b) => a.timestamp - b.timestamp);
+      setMessages(sorted);
     });
   }, []);
 
-  // 👇 Auto scroll
+  // Scroll to bottom
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
 
-  // 🟡 Typing status updates
+  // Mark other people’s messages as “seen”
+  useEffect(() => {
+    if (!userId) return;
+    messages.forEach((msg) => {
+      if (msg.uid !== userId && msg.status !== "seen") {
+        update(dbRef(db, `messages/${msg.id}`), { status: "seen" });
+      }
+    });
+  }, [messages, userId]);
+
+  // Typing logic
+  const handleTyping = (e) => {
+    setMessage(e.target.value);
+    updateTypingStatus(true);
+    clearTimeout(typingTimeoutRef.current);
+    typingTimeoutRef.current = setTimeout(() => updateTypingStatus(false), 3000);
+  };
+
+  const updateTypingStatus = (isTyping) => {
+    if (!userId) return;
+    set(dbRef(db, `typingStatus/${userId}`), isTyping);
+  };
+
   useEffect(() => {
     const typingRef = dbRef(db, "typingStatus");
     return onValue(typingRef, (snap) => {
       const data = snap.val();
       if (!data) return setTypingUsers([]);
       const active = Object.entries(data)
-        .filter(([uid, status]) => status === true && uid !== userId)
+        .filter(([uid, status]) => status && uid !== userId)
         .map(([uid]) => uid);
       Promise.all(
         active.map((uid) =>
@@ -83,13 +95,11 @@ export default function Chat() {
             snap.exists() ? snap.val().name : null
           )
         )
-      ).then((names) => {
-        setTypingUsers(names.filter((n) => n));
-      });
+      ).then((names) => setTypingUsers(names.filter(Boolean)));
     });
   }, [userId]);
 
-  // ✉️ Send
+  // Send message
   const sendMessage = () => {
     if (!userId || !userName || !message.trim()) return;
     push(dbRef(db, "messages"), {
@@ -105,119 +115,28 @@ export default function Chat() {
     updateTypingStatus(false);
   };
 
-  // ⌨️ Typing tracking
-  const handleTyping = (e) => {
-    const val = e.target.value;
-    setMessage(val);
-    updateTypingStatus(true);
-    clearTimeout(typingTimeoutRef.current);
-    typingTimeoutRef.current = setTimeout(() => updateTypingStatus(false), 3000);
-  };
-
-  const updateTypingStatus = (isTyping) => {
-    if (!userId) return;
-    set(dbRef(db, `typingStatus/${userId}`), isTyping);
-  };
-
-  // 📎 Upload image
-  const handleImageUpload = (e) => {
-    const file = e.target.files[0];
-    if (!file) return;
-    const fileRef = storageRef(storage, `chatImages/${Date.now()}_${file.name}`);
-    const uploadTask = uploadBytesResumable(fileRef, file);
-    uploadTask.on(
-      "state_changed",
-      null,
-      (error) => console.error("Upload failed", error),
-      () => {
-        getDownloadURL(uploadTask.snapshot.ref).then((downloadURL) => {
-          push(dbRef(db, "messages"), {
-            uid: userId,
-            name: userName,
-            image: userImage || null,
-            type: "image",
-            imageUrl: downloadURL,
-            timestamp: Date.now(),
-            status: "sent",
-          });
-        });
-      }
-    );
-  };
-
-  // 🎤 Voice
-  const startRecording = async () => {
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      mediaRecorderRef.current = new MediaRecorder(stream);
-      audioChunksRef.current = [];
-      mediaRecorderRef.current.ondataavailable = (e) => {
-        audioChunksRef.current.push(e.data);
-      };
-      mediaRecorderRef.current.onstop = () => {
-        const blob = new Blob(audioChunksRef.current, { type: "audio/webm" });
-        uploadVoiceNote(blob);
-      };
-      mediaRecorderRef.current.start();
-      setRecording(true);
-    } catch (err) {
-      alert("Mic error: " + err.message);
-    }
-  };
-
-  const stopRecording = () => {
-    if (mediaRecorderRef.current && recording) {
-      mediaRecorderRef.current.stop();
-      setRecording(false);
-    }
-  };
-
-  const uploadVoiceNote = (blob) => {
-    const fileRef = storageRef(storage, `voiceNotes/${Date.now()}.webm`);
-    const uploadTask = uploadBytesResumable(fileRef, blob);
-    uploadTask.on(
-      "state_changed",
-      null,
-      (error) => console.error("Voice upload failed", error),
-      () => {
-        getDownloadURL(uploadTask.snapshot.ref).then((downloadURL) => {
-          push(dbRef(db, "messages"), {
-            uid: userId,
-            name: userName,
-            image: userImage || null,
-            type: "voice",
-            voiceUrl: downloadURL,
-            timestamp: Date.now(),
-            status: "sent",
-          });
-        });
-      }
-    );
-  };
-
-  // ❌ Delete
+  // Delete
   const deleteMessage = async (msg) => {
     if (!window.confirm("Delete this message?")) return;
     try {
       await remove(dbRef(db, `messages/${msg.id}`));
-      if ((msg.type === "image" || msg.type === "voice") && msg[`${msg.type}Url`]) {
-        const path = decodeURIComponent(msg[`${msg.type}Url`].split("/o/")[1].split("?")[0]);
-        await deleteObject(storageRef(storage, path));
-      }
     } catch (err) {
       console.error("Delete error", err);
     }
   };
 
-  const addEmoji = (emoji) => setMessage((prev) => prev + emoji);
-  const messageStatus = (status) => (status === "sent" ? "✅" : "✅✅");
+  const messageStatus = (status) => {
+    if (status === "sent") return "✅";
+    if (status === "seen") return "✅✅";
+    return "✅";
+  };
 
   return (
     <div style={chatWrapper}>
       <div style={chatHeader}>
-        <h2 style={{ fontSize: "16px", margin: 0 }}>💬 Welcome to Chatroom</h2>
+        <h2>💬 Afribase Public Chatroom</h2>
         {typingUsers.length > 0 && (
-          <div style={{ fontSize: 14, color: "#333", marginTop: 6 }}>
+          <div style={{ fontSize: 14 }}>
             {typingUsers.join(", ")} {typingUsers.length === 1 ? "is" : "are"} typing...
           </div>
         )}
@@ -234,52 +153,49 @@ export default function Chat() {
                 alignSelf: isOwn ? "flex-end" : "flex-start",
                 backgroundColor: isOwn ? "#dcf8c6" : "#0055cc",
                 color: isOwn ? "#000" : "#fff",
-                borderTopRightRadius: isOwn ? 0 : "10px",
-                borderTopLeftRadius: isOwn ? "10px" : 0,
               }}
             >
-              <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
-                {msg.image ? (
-                  <img src={msg.image} alt="User" style={{ width: 32, height: 32, borderRadius: "50%" }} />
-                ) : (
-                  <div
-                    style={{
-                      width: 32,
-                      height: 32,
-                      borderRadius: "50%",
-                      backgroundColor: "#99ccff",
-                      textAlign: "center",
-                      lineHeight: "32px",
-                      fontWeight: "bold",
-                      color: "#003366",
-                    }}
-                  >
-                    {msg.name?.charAt(0).toUpperCase() || "U"}
-                  </div>
-                )}
-                <span>{msg.name}</span>
-              </div>
+              {/* Clickable profile */}
+              <Link to={`/inbox/${msg.uid}`} style={{ textDecoration: "none", color: isOwn ? "#000" : "#fff" }}>
+                <div style={{ fontWeight: "bold", fontSize: "13px", marginBottom: 4 }}>
+                  {msg.image ? (
+                    <img
+                      src={msg.image}
+                      alt="profile"
+                      style={{ width: 24, height: 24, borderRadius: "50%", marginRight: 5 }}
+                    />
+                  ) : (
+                    <span style={{ marginRight: 5 }}>{msg.name?.[0]}</span>
+                  )}
+                  {msg.name}
+                </div>
+              </Link>
 
               {msg.type === "text" && <div>{msg.text}</div>}
-              {msg.type === "image" && (
-                <img
-                  src={msg.imageUrl}
-                  alt="sent pic"
-                  style={{ maxWidth: "200px", borderRadius: 8, cursor: "pointer" }}
-                  onClick={() => window.open(msg.imageUrl, "_blank")}
-                />
-              )}
-              {msg.type === "voice" && <audio controls src={msg.voiceUrl} style={{ maxWidth: "200px" }} />}
+
+              {/* Delete button (🗑️) only for your own messages */}
               {isOwn && (
                 <button
                   onClick={() => deleteMessage(msg)}
-                  style={{ background: "transparent", color: "red", border: "none", cursor: "pointer" }}
+                  title="Delete message"
+                  style={{
+                    background: "transparent",
+                    border: "none",
+                    color: "#f33",
+                    fontSize: 18,
+                    cursor: "pointer",
+                    marginTop: 4,
+                  }}
                 >
-                  ❌
+                  🗑️
                 </button>
               )}
+
               <div style={timeStyle}>
-                {new Date(msg.timestamp).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}{" "}
+                {new Date(msg.timestamp).toLocaleTimeString([], {
+                  hour: "2-digit",
+                  minute: "2-digit",
+                })}{" "}
                 {messageStatus(msg.status)}
               </div>
             </div>
@@ -289,46 +205,29 @@ export default function Chat() {
       </div>
 
       <div style={inputWrapper}>
-        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-          <input
-            style={{ ...inputStyle, flex: 1 }}
-            placeholder="Type your message"
+        <div style={{ display: "flex", alignItems: "flex-end", gap: 8 }}>
+          <textarea
+            rows={1}
+            style={inputStyle}
+            placeholder="Type a message..."
             value={message}
             onChange={handleTyping}
-            onKeyDown={(e) => e.key === "Enter" && sendMessage()}
-            disabled={recording}
+            onKeyDown={(e) => e.key === "Enter" && !e.shiftKey && sendMessage()}
           />
-          <label style={iconButton}>
-            📎
-            <input type="file" accept="image/*" style={{ display: "none" }} onChange={handleImageUpload} />
-          </label>
-          <button onClick={() => setShowEmojiPicker(!showEmojiPicker)} style={iconButton}>
-            😊
+          <button
+            onClick={sendMessage}
+            disabled={!message.trim()}
+            style={{
+              fontSize: 24,
+              background: "transparent",
+              border: "none",
+              color: "#00cc99",
+              cursor: "pointer",
+            }}
+          >
+            ⬆️
           </button>
-          {!recording ? (
-            <button onClick={startRecording} style={{ ...iconButton, color: "#f33" }}>
-              🎤
-            </button>
-          ) : (
-            <button onClick={stopRecording} style={{ ...iconButton, color: "#a00" }}>
-              ■
-            </button>
-          )}
         </div>
-
-        {showEmojiPicker && (
-          <div style={emojiPicker}>
-            {["😀", "😂", "😍", "😎", "👍", "🙏", "🔥", "❤️"].map((emoji) => (
-              <span key={emoji} style={{ fontSize: 24, cursor: "pointer", margin: 5 }} onClick={() => addEmoji(emoji)}>
-                {emoji}
-              </span>
-            ))}
-          </div>
-        )}
-
-        <button onClick={sendMessage} style={{ ...btnStyle, marginTop: 8 }} disabled={recording || !message.trim()}>
-          Send
-        </button>
       </div>
     </div>
   );
@@ -339,82 +238,54 @@ const chatWrapper = {
   display: "flex",
   flexDirection: "column",
   height: "100vh",
-  backgroundImage: "url('/assets/temp_1738232491498.png')",
-  backgroundSize: "cover",
   fontFamily: "Poppins, sans-serif",
+  background: "#f1f1f1",
 };
 
 const chatHeader = {
-  padding: "10px",
-  backgroundColor: "#00ffcc",
+  padding: 10,
+  background: "#00ffcc",
   color: "#000",
-  fontWeight: "bold",
-  fontSize: "16px",
   textAlign: "center",
+  fontSize: 16,
 };
 
 const messagesContainer = {
   flex: 1,
-  padding: "15px",
+  padding: 10,
   overflowY: "auto",
   display: "flex",
   flexDirection: "column",
-  gap: "12px",
+  gap: 10,
 };
 
 const msgStyle = {
   padding: "10px 14px",
   borderRadius: "12px",
-  fontSize: "15px",
+  maxWidth: "75%",
+  fontSize: "clamp(13px, 1.8vw, 15px)",
   lineHeight: "1.4",
 };
 
 const timeStyle = {
   fontSize: "11px",
-  color: "#888",
+  marginTop: 4,
   textAlign: "right",
-  marginTop: "4px",
 };
 
 const inputWrapper = {
-  display: "flex",
-  flexDirection: "column",
-  padding: "10px",
-  borderTop: "1px solid #333",
+  padding: 10,
+  borderTop: "1px solid #ccc",
+  background: "#fff",
 };
 
 const inputStyle = {
-  padding: "12px",
-  borderRadius: "6px",
+  flex: 1,
   border: "none",
-  fontSize: "16px",
-};
-
-const btnStyle = {
-  padding: "12px",
-  backgroundColor: "#00ffcc",
-  color: "#000",
-  border: "none",
-  borderRadius: "6px",
-  fontWeight: "bold",
-  cursor: "pointer",
-};
-
-const iconButton = {
-  cursor: "pointer",
-  fontSize: "24px",
-  background: "transparent",
-  border: "none",
-  color: "#00ffcc",
-  userSelect: "none",
-};
-
-const emojiPicker = {
-  marginTop: "10px",
-  padding: "10px",
-  backgroundColor: "#222",
-  borderRadius: "8px",
-  display: "flex",
-  flexWrap: "wrap",
-  justifyContent: "center",
+  borderRadius: 6,
+  padding: 10,
+  fontSize: "clamp(14px, 1.8vw, 16px)",
+  resize: "none",
+  maxHeight: 120,
+  overflowY: "auto",
 };
