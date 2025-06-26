@@ -17,9 +17,6 @@ import {
 } from "firebase/storage";
 import { getAuth, onAuthStateChanged } from "firebase/auth";
 
-// Notification sound
-const newMsgSound = new Audio("/assets/notification.mp3");
-
 export default function Chat() {
   const [userId, setUserId] = useState(null);
   const [userName, setUserName] = useState("User");
@@ -27,121 +24,74 @@ export default function Chat() {
   const [message, setMessage] = useState("");
   const [messages, setMessages] = useState([]);
   const [typingUsers, setTypingUsers] = useState([]);
-  const [onlineUsers, setOnlineUsers] = useState([]);
-  const [unread, setUnread] = useState(0);
-  const [isActive, setIsActive] = useState(true);
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
   const [recording, setRecording] = useState(false);
-
   const mediaRecorderRef = useRef(null);
   const audioChunksRef = useRef([]);
   const messagesEndRef = useRef(null);
   const typingTimeoutRef = useRef(null);
 
-  const auth = getAuth();
-
-  // Connect user, set online/typing status
+  // 🔐 Get user info
   useEffect(() => {
-    const unsubAuth = onAuthStateChanged(auth, (user) => {
+    const auth = getAuth();
+    const unsubscribe = onAuthStateChanged(auth, (user) => {
       if (user) {
         setUserId(user.uid);
         get(dbRef(db, `users/${user.uid}`)).then((snap) => {
           if (snap.exists()) {
             const data = snap.val();
-            setUserName(data.name);
+            setUserName(data.name || "User");
             setUserImage(data.image || null);
           }
         });
-        set(dbRef(db, `onlineUsers/${user.uid}`), true);
       }
     });
-
-    return () => {
-      if (auth.currentUser?.uid) {
-        set(dbRef(db, `onlineUsers/${auth.currentUser.uid}`), null);
-        set(dbRef(db, `typingStatus/${auth.currentUser.uid}`), null);
-      }
-      unsubAuth();
-    };
+    return () => unsubscribe();
   }, []);
 
-  // Track focus to know if chatroom is open
-  useEffect(() => {
-    setIsActive(true);
-    window.addEventListener("focus", () => setIsActive(true));
-    window.addEventListener("blur", () => setIsActive(false));
-    return () => {
-      window.removeEventListener("focus", () => setIsActive(true));
-      window.removeEventListener("blur", () => setIsActive(false));
-    };
-  }, []);
-
-  // Load messages
+  // 🔁 Load messages
   useEffect(() => {
     const chatRef = dbRef(db, "messages");
-    return onValue(chatRef, (snap) => {
-      const data = snap.val() || {};
-      const msgs = Object.entries(data)
-        .map(([id, m]) => ({ id, ...m }))
-        .sort((a, b) => a.timestamp - b.timestamp);
+    return onValue(chatRef, (snapshot) => {
+      const data = snapshot.val();
+      const msgs = data
+        ? Object.entries(data)
+            .map(([id, msg]) => ({ id, ...msg }))
+            .sort((a, b) => a.timestamp - b.timestamp)
+        : [];
       setMessages(msgs);
-      if (!isActive) {
-        setUnread((u) => u + 1);
-      } else {
-        setUnread(0);
-      }
-      // Play sound only when chatroom active and new msg is not ours
-      if (isActive && msgs.length && msgs[msgs.length - 1].uid !== userId) {
-        newMsgSound.play().catch(() => {});
-      }
     });
-  }, [userId, isActive]);
+  }, []);
 
-  // Scroll to bottom
+  // 👇 Auto scroll
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
 
-  // Typing indicator
+  // 🟡 Typing status updates
   useEffect(() => {
-    const typeRef = dbRef(db, "typingStatus");
-    return onValue(typeRef, (snap) => {
-      const data = snap.val() || {};
-      const names = Object.entries(data)
-        .filter(([id, st]) => st && id !== userId)
-        .map(([uid]) => uid)
-        .map((uid) => null); // Placeholder replaced below
+    const typingRef = dbRef(db, "typingStatus");
+    return onValue(typingRef, (snap) => {
+      const data = snap.val();
+      if (!data) return setTypingUsers([]);
+      const active = Object.entries(data)
+        .filter(([uid, status]) => status === true && uid !== userId)
+        .map(([uid]) => uid);
       Promise.all(
-        Object.entries(data)
-          .filter(([id, st]) => st && id !== userId)
-          .map(([uid]) => get(dbRef(db, `users/${uid}`)).then((s) => s.val()?.name))
-      ).then((n) => setTypingUsers(n.filter(Boolean)));
+        active.map((uid) =>
+          get(dbRef(db, `users/${uid}`)).then((snap) =>
+            snap.exists() ? snap.val().name : null
+          )
+        )
+      ).then((names) => {
+        setTypingUsers(names.filter((n) => n));
+      });
     });
   }, [userId]);
 
-  // Online user list
-  useEffect(() => {
-    const onlineRef = dbRef(db, "onlineUsers");
-    return onValue(onlineRef, (snap) => {
-      const data = snap.val() || {};
-      const uids = Object.entries(data).filter(([,on]) => on).map(([uid]) => uid);
-      Promise.all(uids.map((uid) => get(dbRef(db, `users/${uid}`)).then((s) => s.val()?.name)))
-        .then((names) => setOnlineUsers(names.filter(Boolean)));
-    });
-  }, []);
-
-  // Input handlers
-  const handleTyping = (e) => {
-    setMessage(e.target.value);
-    set(dbRef(db, `typingStatus/${userId}`), true);
-    clearTimeout(typingTimeoutRef.current);
-    typingTimeoutRef.current = setTimeout(() => {
-      set(dbRef(db, `typingStatus/${userId}`), false);
-    }, 2000);
-  };
-
+  // ✉️ Send
   const sendMessage = () => {
-    if (!message.trim()) return;
+    if (!userId || !userName || !message.trim()) return;
     push(dbRef(db, "messages"), {
       uid: userId,
       name: userName,
@@ -152,35 +102,123 @@ export default function Chat() {
       status: "sent",
     });
     setMessage("");
-    set(dbRef(db, `typingStatus/${userId}`), false);
+    updateTypingStatus(false);
   };
 
-  // Image & Voice handlers (same as before) ...
-  const handleImageUpload = (e) => { /* ... */ };
-  const startRecording = async () => { /* ... */ };
-  const stopRecording = () => { /* ... */ };
-  const uploadVoiceNote = (blob) => { /* ... */ };
+  // ⌨️ Typing tracking
+  const handleTyping = (e) => {
+    const val = e.target.value;
+    setMessage(val);
+    updateTypingStatus(true);
+    clearTimeout(typingTimeoutRef.current);
+    typingTimeoutRef.current = setTimeout(() => updateTypingStatus(false), 3000);
+  };
 
-  const deleteMessage = async (msg) => { /* ... */ };
-  const addEmoji = (e) => setMessage((m) => m + e);
+  const updateTypingStatus = (isTyping) => {
+    if (!userId) return;
+    set(dbRef(db, `typingStatus/${userId}`), isTyping);
+  };
+
+  // 📎 Upload image
+  const handleImageUpload = (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    const fileRef = storageRef(storage, `chatImages/${Date.now()}_${file.name}`);
+    const uploadTask = uploadBytesResumable(fileRef, file);
+    uploadTask.on(
+      "state_changed",
+      null,
+      (error) => console.error("Upload failed", error),
+      () => {
+        getDownloadURL(uploadTask.snapshot.ref).then((downloadURL) => {
+          push(dbRef(db, "messages"), {
+            uid: userId,
+            name: userName,
+            image: userImage || null,
+            type: "image",
+            imageUrl: downloadURL,
+            timestamp: Date.now(),
+            status: "sent",
+          });
+        });
+      }
+    );
+  };
+
+  // 🎤 Voice
+  const startRecording = async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      mediaRecorderRef.current = new MediaRecorder(stream);
+      audioChunksRef.current = [];
+      mediaRecorderRef.current.ondataavailable = (e) => {
+        audioChunksRef.current.push(e.data);
+      };
+      mediaRecorderRef.current.onstop = () => {
+        const blob = new Blob(audioChunksRef.current, { type: "audio/webm" });
+        uploadVoiceNote(blob);
+      };
+      mediaRecorderRef.current.start();
+      setRecording(true);
+    } catch (err) {
+      alert("Mic error: " + err.message);
+    }
+  };
+
+  const stopRecording = () => {
+    if (mediaRecorderRef.current && recording) {
+      mediaRecorderRef.current.stop();
+      setRecording(false);
+    }
+  };
+
+  const uploadVoiceNote = (blob) => {
+    const fileRef = storageRef(storage, `voiceNotes/${Date.now()}.webm`);
+    const uploadTask = uploadBytesResumable(fileRef, blob);
+    uploadTask.on(
+      "state_changed",
+      null,
+      (error) => console.error("Voice upload failed", error),
+      () => {
+        getDownloadURL(uploadTask.snapshot.ref).then((downloadURL) => {
+          push(dbRef(db, "messages"), {
+            uid: userId,
+            name: userName,
+            image: userImage || null,
+            type: "voice",
+            voiceUrl: downloadURL,
+            timestamp: Date.now(),
+            status: "sent",
+          });
+        });
+      }
+    );
+  };
+
+  // ❌ Delete
+  const deleteMessage = async (msg) => {
+    if (!window.confirm("Delete this message?")) return;
+    try {
+      await remove(dbRef(db, `messages/${msg.id}`));
+      if ((msg.type === "image" || msg.type === "voice") && msg[`${msg.type}Url`]) {
+        const path = decodeURIComponent(msg[`${msg.type}Url`].split("/o/")[1].split("?")[0]);
+        await deleteObject(storageRef(storage, path));
+      }
+    } catch (err) {
+      console.error("Delete error", err);
+    }
+  };
+
+  const addEmoji = (emoji) => setMessage((prev) => prev + emoji);
+  const messageStatus = (status) => (status === "sent" ? "✅" : "✅✅");
 
   return (
     <div style={chatWrapper}>
       <div style={chatHeader}>
-        <h2>💬 Welcome to Chatroom</h2>
+        <h2 style={{ fontSize: "16px", margin: 0 }}>💬 Welcome to Chatroom</h2>
         {typingUsers.length > 0 && (
-          <div style={{ fontSize: 14 }}>
-            {typingUsers.join(", ")} {typingUsers.length === 1 ? "is" : "are"} typing…
-          </div>
-        )}
-        {onlineUsers.length > 0 && (
-          <div style={{ fontSize: 12, color: "#555" }}>
-            Online: {onlineUsers.join(", ")}
-          </div>
-        )}
-        {unread > 0 && (
-          <div style={{ fontSize: 12, color: "red" }}>
-            🔔 {unread} unread message{unread > 1 ? "s" : ""}
+          <div style={{ fontSize: 14, color: "#333", marginTop: 6 }}>
+            {typingUsers.join(", ")} {typingUsers.length === 1 ? "is" : "are"} typing...
           </div>
         )}
       </div>
@@ -189,34 +227,60 @@ export default function Chat() {
         {messages.map((msg) => {
           const isOwn = msg.uid === userId;
           return (
-            <div key={msg.id} style={{
-              ...msgStyle,
-              alignSelf: isOwn ? "flex-end" : "flex-start",
-              backgroundColor: isOwn ? "#dcf8c6" : "#0055cc",
-              color: isOwn ? "#000" : "#fff",
-            }}>
-              <div style={{ display: "flex", gap: 8, marginBottom: 4 }}>
-                <img
-                  src={msg.image}
-                  alt="User"
-                  style={{ width: 32, height: 32, borderRadius: "50%" }}
-                />
+            <div
+              key={msg.id}
+              style={{
+                ...msgStyle,
+                alignSelf: isOwn ? "flex-end" : "flex-start",
+                backgroundColor: isOwn ? "#dcf8c6" : "#0055cc",
+                color: isOwn ? "#000" : "#fff",
+                borderTopRightRadius: isOwn ? 0 : "10px",
+                borderTopLeftRadius: isOwn ? "10px" : 0,
+              }}
+            >
+              <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
+                {msg.image ? (
+                  <img src={msg.image} alt="User" style={{ width: 32, height: 32, borderRadius: "50%" }} />
+                ) : (
+                  <div
+                    style={{
+                      width: 32,
+                      height: 32,
+                      borderRadius: "50%",
+                      backgroundColor: "#99ccff",
+                      textAlign: "center",
+                      lineHeight: "32px",
+                      fontWeight: "bold",
+                      color: "#003366",
+                    }}
+                  >
+                    {msg.name?.charAt(0).toUpperCase() || "U"}
+                  </div>
+                )}
                 <span>{msg.name}</span>
               </div>
+
               {msg.type === "text" && <div>{msg.text}</div>}
               {msg.type === "image" && (
                 <img
-                  src={msg.imageUrl} alt="pic"
-                  style={{ maxWidth: 200, borderRadius: 8 }}
-                  onClick={() => window.open(msg.imageUrl)}
+                  src={msg.imageUrl}
+                  alt="sent pic"
+                  style={{ maxWidth: "200px", borderRadius: 8, cursor: "pointer" }}
+                  onClick={() => window.open(msg.imageUrl, "_blank")}
                 />
               )}
-              {msg.type === "voice" && <audio controls src={msg.voiceUrl} />}
+              {msg.type === "voice" && <audio controls src={msg.voiceUrl} style={{ maxWidth: "200px" }} />}
               {isOwn && (
-                <button onClick={() => deleteMessage(msg)} style={{ color: "red" }}>❌</button>
+                <button
+                  onClick={() => deleteMessage(msg)}
+                  style={{ background: "transparent", color: "red", border: "none", cursor: "pointer" }}
+                >
+                  ❌
+                </button>
               )}
               <div style={timeStyle}>
-                {new Date(msg.timestamp).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                {new Date(msg.timestamp).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}{" "}
+                {messageStatus(msg.status)}
               </div>
             </div>
           );
@@ -225,35 +289,44 @@ export default function Chat() {
       </div>
 
       <div style={inputWrapper}>
-        <div style={{ display: "flex", gap: 8 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
           <input
             style={{ ...inputStyle, flex: 1 }}
-            placeholder="Type a message"
+            placeholder="Type your message"
             value={message}
             onChange={handleTyping}
             onKeyDown={(e) => e.key === "Enter" && sendMessage()}
             disabled={recording}
           />
           <label style={iconButton}>
-            📎<input type="file" onChange={handleImageUpload} style={{ display: "none" }} />
+            📎
+            <input type="file" accept="image/*" style={{ display: "none" }} onChange={handleImageUpload} />
           </label>
-          <button onClick={() => setShowEmojiPicker((s) => !s)} style={iconButton}>😊</button>
+          <button onClick={() => setShowEmojiPicker(!showEmojiPicker)} style={iconButton}>
+            😊
+          </button>
           {!recording ? (
-            <button onClick={startRecording} style={{ ...iconButton, color: "#f33" }}>🎤</button>
+            <button onClick={startRecording} style={{ ...iconButton, color: "#f33" }}>
+              🎤
+            </button>
           ) : (
-            <button onClick={stopRecording} style={{ ...iconButton, color: "#a00" }}>■</button>
+            <button onClick={stopRecording} style={{ ...iconButton, color: "#a00" }}>
+              ■
+            </button>
           )}
         </div>
 
         {showEmojiPicker && (
           <div style={emojiPicker}>
-            {["😀","😍","👍"].map((e) => (
-              <span key={e} onClick={() => addEmoji(e)} style={{ fontSize:24, margin:5 }}>{e}</span>
+            {["😀", "😂", "😍", "😎", "👍", "🙏", "🔥", "❤️"].map((emoji) => (
+              <span key={emoji} style={{ fontSize: 24, cursor: "pointer", margin: 5 }} onClick={() => addEmoji(emoji)}>
+                {emoji}
+              </span>
             ))}
           </div>
         )}
 
-        <button onClick={sendMessage} style={{ ...btnStyle, marginTop:8 }} disabled={recording || !message.trim()}>
+        <button onClick={sendMessage} style={{ ...btnStyle, marginTop: 8 }} disabled={recording || !message.trim()}>
           Send
         </button>
       </div>
@@ -261,24 +334,23 @@ export default function Chat() {
   );
 }
 
-// Styles (same as before)…const chatWrapper = {
+// Styles
+const chatWrapper = {
   display: "flex",
   flexDirection: "column",
   height: "100vh",
   backgroundImage: "url('/assets/temp_1738232491498.png')",
   backgroundSize: "cover",
-  backgroundPosition: "center",
   fontFamily: "Poppins, sans-serif",
 };
 
 const chatHeader = {
-  padding: "12px",
+  padding: "10px",
   backgroundColor: "#00ffcc",
   color: "#000",
   fontWeight: "bold",
   fontSize: "16px",
   textAlign: "center",
-  borderBottom: "1px solid #ccc",
 };
 
 const messagesContainer = {
@@ -288,7 +360,6 @@ const messagesContainer = {
   display: "flex",
   flexDirection: "column",
   gap: "12px",
-  backgroundColor: "rgba(255,255,255,0.05)",
 };
 
 const msgStyle = {
@@ -296,14 +367,11 @@ const msgStyle = {
   borderRadius: "12px",
   fontSize: "15px",
   lineHeight: "1.4",
-  maxWidth: "80%",
-  wordBreak: "break-word",
-  boxShadow: "0 1px 5px rgba(0,0,0,0.1)",
 };
 
 const timeStyle = {
   fontSize: "11px",
-  color: "#ccc",
+  color: "#888",
   textAlign: "right",
   marginTop: "4px",
 };
@@ -313,7 +381,6 @@ const inputWrapper = {
   flexDirection: "column",
   padding: "10px",
   borderTop: "1px solid #333",
-  backgroundColor: "rgba(255,255,255,0.1)",
 };
 
 const inputStyle = {
@@ -321,9 +388,6 @@ const inputStyle = {
   borderRadius: "6px",
   border: "none",
   fontSize: "16px",
-  backgroundColor: "#fff",
-  color: "#000",
-  outline: "none",
 };
 
 const btnStyle = {
@@ -354,4 +418,3 @@ const emojiPicker = {
   flexWrap: "wrap",
   justifyContent: "center",
 };
-
