@@ -1,9 +1,6 @@
-// Updated SendPrivateMessage.js to save messages bi-directionally (sender + receiver),
-// and include sender name in the inbox chat as requested.
-
 import React, { useState, useEffect } from "react";
 import { db } from "../firebase";
-import { ref as dbRef, push, set, get } from "firebase/database";
+import { ref as dbRef, push, get } from "firebase/database";
 import { getAuth } from "firebase/auth";
 
 export default function SendPrivateMessage({ recipientUID, recipientName, onClose, productId = null }) {
@@ -13,7 +10,6 @@ export default function SendPrivateMessage({ recipientUID, recipientName, onClos
   const [senderName, setSenderName] = useState(sender?.displayName || "Anonymous");
 
   useEffect(() => {
-    // Fetch sender name from db if needed (optional)
     if (sender) {
       get(dbRef(db, `users/${sender.uid}/name`)).then((snap) => {
         if (snap.exists()) setSenderName(snap.val());
@@ -22,8 +18,14 @@ export default function SendPrivateMessage({ recipientUID, recipientName, onClos
   }, [sender]);
 
   const handleSend = async () => {
-    if (!message.trim()) return alert("Message cannot be empty");
-    if (!sender) return alert("You must be logged in to send messages");
+    if (!message.trim()) {
+      alert("Message cannot be empty");
+      return;
+    }
+    if (!sender) {
+      alert("You must be logged in to send messages");
+      return;
+    }
 
     const time = new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
     const msgData = {
@@ -36,19 +38,16 @@ export default function SendPrivateMessage({ recipientUID, recipientName, onClos
     };
 
     try {
-      // Push message to recipient inbox
-      const recipientRef = dbRef(db, `inbox/${recipientUID}/${sender.uid}`);
-      await push(recipientRef, msgData);
-
-      // Also push message to sender's inbox for the recipient chat
-      const senderRef = dbRef(db, `inbox/${sender.uid}/${recipientUID}`);
-      await push(senderRef, msgData);
+      // Push to recipient's inbox under sender's UID
+      await push(dbRef(db, `inbox/${recipientUID}/${sender.uid}`), msgData);
+      // Push to sender's inbox under recipient's UID
+      await push(dbRef(db, `inbox/${sender.uid}/${recipientUID}`), msgData);
 
       alert("Message sent!");
       setMessage("");
       onClose();
-    } catch (err) {
-      console.error("Error sending private message:", err);
+    } catch (error) {
+      console.error("Error sending private message:", error);
       alert("Failed to send message");
     }
   };
@@ -79,7 +78,6 @@ export default function SendPrivateMessage({ recipientUID, recipientName, onClos
   );
 }
 
-// 🔧 STYLES
 const overlay = {
   position: "fixed",
   top: 0,
