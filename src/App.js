@@ -4,10 +4,14 @@ import { BrowserRouter as Router, Routes, Route, Navigate } from "react-router-d
 import { getAuth, onAuthStateChanged } from "firebase/auth";
 
 import Home from "./pages/Home";
-import Chat from "./pages/Chat";          // matches your Chat.js
-import Market from "./pages/Market";     // matches your Market.js
+import Chat from "./pages/Chat";
+import Market from "./pages/Market";
 import Profile from "./pages/Profile";
 import Login from "./pages/Login";
+
+// ✅ Add these two inbox pages
+import InboxList from "./pages/InboxList";   // rename your old Inbox.js to this
+import Inbox from "./pages/Inbox";          // new 1-on-1 private DM
 
 function App() {
   const [user, setUser] = useState(null);
@@ -41,6 +45,11 @@ function App() {
             <Route path="/chat" element={<Chat />} />
             <Route path="/market" element={<Market />} />
             <Route path="/profile" element={<Profile />} />
+            
+            {/* ✅ New Inbox Routes */}
+            <Route path="/inbox" element={<InboxList />} />
+            <Route path="/inbox/:targetId" element={<Inbox />} />
+
             <Route path="*" element={<Navigate to="/" replace />} />
           </>
         )}
