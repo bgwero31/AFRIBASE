@@ -1,4 +1,4 @@
-// ✅ Profile.js — updated for linking to private Inbox
+// Profile.js — ✅ Updated for proper inbox message linking and no syntax errors
 import React, { useEffect, useState, useRef } from "react";
 import {
   getAuth,
@@ -10,8 +10,6 @@ import {
   get,
   child,
   update,
-  remove,
-  push,
   onValue,
 } from "firebase/database";
 import { db } from "../firebase";
@@ -26,7 +24,6 @@ export default function Profile() {
   const [inbox, setInbox] = useState([]);
   const [userMap, setUserMap] = useState({});
   const [uploading, setUploading] = useState(false);
-  const [menuOpen, setMenuOpen] = useState(false);
   const [unreadCount, setUnreadCount] = useState(0);
   const navigate = useNavigate();
   const inboxRef = useRef();
@@ -58,12 +55,12 @@ export default function Profile() {
           if (snap.exists()) {
             const messages = Object.entries(snap.val())
               .map(([id, m]) => ({ id, ...m }))
-              .filter((m) => m.message && m.fromId);
+              .filter((m) => m.text && m.fromUID);
             if (!firstLoad && messages.length > inbox.length) {
               audio.current?.play().catch(() => {});
             }
             firstLoad = false;
-            setInbox(messages.sort((a, b) => b.timestamp - a.timestamp));
+            setInbox(messages.sort((a, b) => b.time - a.time));
             setUnreadCount(messages.filter((m) => !m.read).length);
           } else {
             setInbox([]);
@@ -105,8 +102,8 @@ export default function Profile() {
     return `${Math.floor(diff / 86400)}d ago`;
   };
 
-  const goToInbox = (fromId) => {
-    navigate(`/inbox/${fromId}`);
+  const goToInbox = (fromUID) => {
+    navigate(`/inbox/${fromUID}`);
   };
 
   if (!user) return <p style={{ padding: 20 }}>Checking...</p>;
@@ -120,21 +117,26 @@ export default function Profile() {
         ) : <div style={{ fontSize: 40 }}>🙍</div>}
         <h3>{profileData.name}</h3>
         <p>{profileData.email}</p>
-        <button onClick={handleLogout}>🚪 Logout</button>
+        <input type="file" onChange={handleImageUpload} disabled={uploading} />
+        <button onClick={handleLogout} style={{ marginTop: 10 }}>🚪 Logout</button>
       </div>
 
       <h3>📥 Inbox ({unreadCount} new)</h3>
       <div style={{ maxHeight: 200, overflowY: "auto" }}>
         {inbox.length ? inbox.map((msg) => (
-          <div key={msg.id} onClick={() => goToInbox(msg.fromId)} style={{
-            padding: 8,
-            marginBottom: 6,
-            background: msg.read ? "#eee" : "#cce5ff",
-            borderRadius: 8,
-            cursor: "pointer"
-          }}>
-            <strong>{userMap[msg.fromId]}</strong>: {msg.message.slice(0, 40)}...
-            <div style={{ fontSize: 12 }}>{timeAgo(msg.timestamp)}</div>
+          <div
+            key={msg.id}
+            onClick={() => goToInbox(msg.fromUID)}
+            style={{
+              padding: 8,
+              marginBottom: 6,
+              background: msg.read ? "#eee" : "#cce5ff",
+              borderRadius: 8,
+              cursor: "pointer"
+            }}
+          >
+            <strong>{userMap[msg.fromUID] || "Unknown"}</strong>: {msg.text.slice(0, 40)}...
+            <div style={{ fontSize: 12 }}>{timeAgo(msg.time)}</div>
           </div>
         )) : <p>No messages</p>}
       </div>
