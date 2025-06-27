@@ -1,4 +1,4 @@
-// Marketplace.js
+// Marketplace.js (fixed red X on GitHub, full file with proper JSX & style fixes)
 import React, { useState, useEffect } from "react";
 import { db } from "../firebase";
 import {
@@ -48,7 +48,7 @@ export default function Marketplace() {
         }
       });
     }
-  }, []);
+  }, [auth]);
 
   useEffect(() => {
     const productRef = ref(db, "products");
@@ -68,6 +68,8 @@ export default function Marketplace() {
             : [],
         }));
         setProducts(items.reverse());
+      } else {
+        setProducts([]);
       }
     });
   }, []);
@@ -190,14 +192,17 @@ export default function Marketplace() {
         backgroundPosition: "center",
       }}
     >
-      <div style={{ textAlign: "center", fontSize: 24, fontWeight: "bold", marginBottom: 20 }}>
-        {"AFRIBASE MARKETPLACE".split("").map((char, i) => (
+      <div style={styles.header}>
+        {"MARKETPLACE".split("").map((char, i) => (
           <span
             key={i}
             style={{
               transition: "all 0.3s ease",
-              color: `hsl(${i * 12}, 100%, 50%)`,
+              color: `hsl(${i * 18}, 100%, 50%)`,
               marginRight: 2,
+              fontWeight: "bold",
+              fontSize: 26,
+              userSelect: "none",
             }}
           >
             {char}
@@ -212,8 +217,131 @@ export default function Marketplace() {
         onChange={(e) => setSearch(e.target.value)}
       />
 
-      {/* Upload form and product grid remain unchanged */}
-      {/* ... keep rest of your code here ... */}
+      <div style={styles.form}>
+        <input
+          placeholder="Title"
+          value={title}
+          onChange={(e) => setTitle(e.target.value)}
+          style={styles.input}
+        />
+        <input
+          placeholder="Description"
+          value={description}
+          onChange={(e) => setDescription(e.target.value)}
+          style={styles.input}
+        />
+        <input
+          placeholder="Price"
+          value={price}
+          onChange={(e) => setPrice(e.target.value)}
+          style={styles.input}
+        />
+        <select
+          value={category}
+          onChange={(e) => setCategory(e.target.value)}
+          style={styles.input}
+        >
+          <option value="">Select Category</option>
+          <option value="Electronics">📱 Electronics</option>
+          <option value="Clothing">👗 Clothing</option>
+          <option value="Food">🍔 Food</option>
+          <option value="Vehicles">🚗 Vehicles</option>
+        </select>
+        <input
+          type="file"
+          onChange={(e) => setImage(e.target.files[0])}
+          style={{ marginBottom: 10 }}
+        />
+        <button onClick={handlePost} disabled={uploading} style={styles.postBtn}>
+          {uploading ? "Uploading..." : "📤 Post"}
+        </button>
+      </div>
+
+      <div style={styles.grid}>
+        {filtered.map((p) => (
+          <div key={p.id} style={styles.card}>
+            {auth.currentUser?.uid === p.ownerUID && (
+              <button onClick={() => deleteProduct(p.id)} style={styles.closeBtn}>
+                ❌
+              </button>
+            )}
+
+            <img
+              src={p.image}
+              style={styles.image}
+              alt={p.title}
+              onClick={() => setModal(p)}
+            />
+
+            <h3>{p.title}</h3>
+            <p>{p.description}</p>
+            <strong style={{ color: "green" }}>{p.price}</strong>
+            <div>📂 {p.category}</div>
+            <p style={{ fontSize: 12 }}>{p.time}</p>
+
+            <div>
+              <button onClick={() => toggleLike(p)}>👍 {p.likes.length}</button>
+              <button onClick={() => toggleDislike(p)}>👎 {p.dislikes.length}</button>
+            </div>
+
+            <div>
+              <button
+                onClick={() =>
+                  setShowComments({ ...showComments, [p.id]: !showComments[p.id] })
+                }
+              >
+                💬 Comments ({p.comments.length})
+              </button>
+              {showComments[p.id] && (
+                <div>
+                  {p.comments.map((c) => (
+                    <p key={c.id}>
+                      <strong>{c.name}</strong>: {c.text}
+                      {auth.currentUser?.uid === c.uid && (
+                        <span
+                          onClick={() => deleteComment(p.id, c.id)}
+                          style={{ color: "red", cursor: "pointer", marginLeft: 6 }}
+                        >
+                          ❌
+                        </span>
+                      )}
+                    </p>
+                  ))}
+                  <input
+                    placeholder="Write comment..."
+                    value={commentInputs[p.id] || ""}
+                    onChange={(e) =>
+                      setCommentInputs({ ...commentInputs, [p.id]: e.target.value })
+                    }
+                    style={styles.commentInput}
+                  />
+                  <button onClick={() => handleComment(p.id)}>Post</button>
+                </div>
+              )}
+            </div>
+
+            <div style={styles.actions}>
+              <a
+                href={getWhatsAppLink(p.ownerPhoneNumber, p.title)}
+                target="_blank"
+                rel="noreferrer"
+                style={styles.whatsappBtn}
+              >
+                WhatsApp Seller
+              </a>
+              <button
+                style={styles.chatBtn}
+                onClick={() => {
+                  setSelectedUser({ uid: p.ownerUID, name: p.ownerName });
+                  setShowModal(true);
+                }}
+              >
+                Chat Seller
+              </button>
+            </div>
+          </div>
+        ))}
+      </div>
 
       {modal && (
         <div style={styles.overlay} onClick={() => setModal(null)}>
@@ -244,11 +372,109 @@ const styles = {
     fontFamily: "Poppins",
     color: "#000",
   },
+  header: {
+    textAlign: "center",
+    marginBottom: 20,
+    userSelect: "none",
+  },
   search: {
     width: "100%",
     padding: 10,
     fontSize: 16,
+    marginBottom: 20,
+    borderRadius: 6,
+    border: "1px solid #ccc",
+  },
+  form: {
+    marginBottom: 30,
+    display: "flex",
+    flexDirection: "column",
+    gap: 10,
+    maxWidth: 400,
+  },
+  input: {
+    padding: 10,
+    fontSize: 16,
+    borderRadius: 6,
+    border: "1px solid #ccc",
+  },
+  postBtn: {
+    padding: "10px 15px",
+    fontSize: 16,
+    borderRadius: 6,
+    border: "none",
+    backgroundColor: "#28a745",
+    color: "#fff",
+    cursor: "pointer",
+  },
+  grid: {
+    display: "grid",
+    gridTemplateColumns: "repeat(auto-fill, minmax(250px, 1fr))",
+    gap: 20,
+  },
+  card: {
+    background: "#fff",
+    borderRadius: 12,
+    padding: 15,
+    boxShadow: "0 0 10px rgba(0,0,0,0.1)",
+    position: "relative",
+    display: "flex",
+    flexDirection: "column",
+  },
+  closeBtn: {
+    position: "absolute",
+    top: 8,
+    right: 8,
+    background: "red",
+    color: "#fff",
+    border: "none",
+    borderRadius: "50%",
+    cursor: "pointer",
+    fontWeight: "bold",
+    width: 26,
+    height: 26,
+    lineHeight: "22px",
+    textAlign: "center",
+  },
+  image: {
+    width: "100%",
+    height: 180,
+    objectFit: "cover",
+    borderRadius: 10,
+    cursor: "zoom-in",
     marginBottom: 10,
+  },
+  commentInput: {
+    width: "100%",
+    padding: 8,
+    marginTop: 6,
+    borderRadius: 6,
+    border: "1px solid #ccc",
+  },
+  actions: {
+    display: "flex",
+    gap: 10,
+    marginTop: 10,
+  },
+  whatsappBtn: {
+    background: "#25D366",
+    color: "#fff",
+    padding: "6px 12px",
+    borderRadius: 6,
+    textDecoration: "none",
+    display: "inline-block",
+    fontWeight: "bold",
+    flexGrow: 1,
+    textAlign: "center",
+  },
+  chatBtn: {
+    background: "#007bff",
+    color: "#fff",
+    border: "none",
+    padding: "6px 12px",
+    borderRadius: 6,
+    cursor: "pointer",
+    flexGrow: 1,
   },
   overlay: {
     position: "fixed",
