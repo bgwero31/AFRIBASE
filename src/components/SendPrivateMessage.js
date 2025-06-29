@@ -1,63 +1,41 @@
-import React, { useState, useEffect } from "react";
+import React, { useState } from "react";
 import { db } from "../firebase";
-import { ref as dbRef, push, get } from "firebase/database";
+import { ref as dbRef, push } from "firebase/database";
 import { getAuth } from "firebase/auth";
 
 export default function SendPrivateMessage({ recipientUID, recipientName, onClose, productId = null }) {
   const [message, setMessage] = useState("");
   const auth = getAuth();
   const sender = auth.currentUser;
-  const [senderName, setSenderName] = useState(sender?.displayName || "Anonymous");
 
-  useEffect(() => {
-    if (sender) {
-      get(dbRef(db, `users/${sender.uid}/name`)).then((snap) => {
-        if (snap.exists()) setSenderName(snap.val());
-      });
-    }
-  }, [sender]);
+  const handleSend = () => {
+    if (!message.trim()) return alert("Message cannot be empty");
 
-  const handleSend = async () => {
-    if (!message.trim()) {
-      alert("Message cannot be empty");
-      return;
-    }
-    if (!sender) {
-      alert("You must be logged in to send messages");
-      return;
-    }
-
-    const time = new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
     const msgData = {
-      fromUID: sender.uid,
-      fromName: senderName,
-      fromAvatar: sender.photoURL || "",
-      text: message.trim(),
-      time,
-      productId,
+      fromUID: sender?.uid,
+      fromName: sender?.displayName || "Anonymous",
+      fromAvatar: sender?.photoURL || "",
+      text: message,
+      time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+      productId: productId || null
     };
 
-    try {
-      // Push to recipient's inbox under sender's UID
-      await push(dbRef(db, `inbox/${recipientUID}/${sender.uid}`), msgData);
-      // Push to sender's inbox under recipient's UID
-      await push(dbRef(db, `inbox/${sender.uid}/${recipientUID}`), msgData);
-
-      alert("Message sent!");
-      setMessage("");
-      onClose();
-    } catch (error) {
-      console.error("Error sending private message:", error);
-      alert("Failed to send message");
-    }
+    push(dbRef(db, `inbox/${recipientUID}`), msgData)
+      .then(() => {
+        alert("Message sent!");
+        setMessage("");
+        onClose(); // close modal
+      })
+      .catch((err) => {
+        console.error("Error sending private message:", err);
+        alert("Failed to send message");
+      });
   };
 
   return (
     <div style={overlay}>
       <div style={modal}>
-        <h3>
-          Send Message to <span style={{ color: "#00ffcc" }}>{recipientName}</span>
-        </h3>
+        <h3>Send Message to <span style={{ color: "#00ffcc" }}>{recipientName}</span></h3>
         <textarea
           value={message}
           onChange={(e) => setMessage(e.target.value)}
@@ -66,18 +44,15 @@ export default function SendPrivateMessage({ recipientUID, recipientName, onClos
           style={textarea}
         />
         <div style={{ marginTop: 12, display: "flex", gap: "10px" }}>
-          <button onClick={handleSend} style={btn}>
-            Send
-          </button>
-          <button onClick={onClose} style={cancelBtn}>
-            Cancel
-          </button>
+          <button onClick={handleSend} style={btn}>Send</button>
+          <button onClick={onClose} style={cancelBtn}>Cancel</button>
         </div>
       </div>
     </div>
   );
 }
 
+// 🔧 STYLES
 const overlay = {
   position: "fixed",
   top: 0,
@@ -88,7 +63,7 @@ const overlay = {
   display: "flex",
   alignItems: "center",
   justifyContent: "center",
-  zIndex: 1000,
+  zIndex: 1000
 };
 
 const modal = {
@@ -98,7 +73,7 @@ const modal = {
   width: "90%",
   maxWidth: "400px",
   color: "#fff",
-  fontFamily: "Poppins, sans-serif",
+  fontFamily: "Poppins, sans-serif"
 };
 
 const textarea = {
@@ -109,7 +84,7 @@ const textarea = {
   border: "none",
   resize: "none",
   backgroundColor: "#2b2b2b",
-  color: "#fff",
+  color: "#fff"
 };
 
 const btn = {
@@ -119,11 +94,11 @@ const btn = {
   fontWeight: "bold",
   border: "none",
   borderRadius: "6px",
-  cursor: "pointer",
+  cursor: "pointer"
 };
 
 const cancelBtn = {
   ...btn,
   backgroundColor: "#444",
-  color: "#fff",
+  color: "#fff"
 };
